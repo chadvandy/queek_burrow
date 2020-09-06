@@ -1,19 +1,3 @@
--- DONE remove Grom VO
--- DONE make 3 generic heads per race with icons
--- DONE rename "Start Cooking" & tooltip
--- DONE reorder the four ingredient groups to be Nemesis -> T3 (sceropted)
--- DONE reward heads for post-battle
--- DONE actual effects!
-
-
-
--- TODO resolve LL-head-collection mechanic (grant missions which guarantee death of LL)
--- TODO rename "Cauldron Dish"
--- TODO hide "Recipe Book"(?) // Rename
--- TODO fix slot tooltips
-
-
-
 local faction_key = "wh2_main_skv_clan_mors"
 
 local function remove_component(uic_obj)
@@ -50,8 +34,8 @@ local function ui_init()
     if is_uicomponent(topbar) then
         local uic = UIComponent(topbar:CreateComponent("queek_headtaking", "ui/campaign ui/queek_headtaking"))
 
-        find_uicomponent(uic, "grom_goals"):SetVisible(false)
-        find_uicomponent(uic, "trait"):SetVisible(false)
+        --find_uicomponent(uic, "grom_goals"):SetVisible(false)
+        find_uicomponent(uic, "trait"):SetImagePath("ui/skins/default/queektrait_icon_large.png")
     end
 
     local function close_listener()
@@ -127,9 +111,10 @@ local function ui_init()
         local scrap_crap = find_uicomponent("queek_cauldron", "mid_colum", "cook_button_holder", "scrap_cost")
         remove_component(scrap_crap)
 
-        -- remove Grom's ugly gob
+        -- change* Grom's ugly gob
         local grom = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "trait")
-        remove_component(grom)
+        grom:SetImagePath("ui/skins/default/queektrait_icon_large.png")
+        --remove_component(grom)
 
         local slot_holder = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "ingredients_and_effects")
         local arch = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "arch")
