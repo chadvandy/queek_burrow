@@ -6,7 +6,6 @@ end
 local headtaking = {
     heads = nil,
 
-
     chance = 20,
     queek_subtype = "wh2_main_skv_queek_headtaker",
     faction_key = "wh2_main_skv_clan_mors",
@@ -112,29 +111,16 @@ local excluded_legendary_lords = {
 
 local queek_subtype = "wh2_main_skv_queek_headtaker"
 
-function headtaking:add_head(character_obj, queek_obj)
+function headtaking:add_head_with_key(head_key)
+    if not is_string(head_key) then
+        -- errmsg
+        return false
+    end
+
     local faction_obj = cm:get_faction(self.faction_key)
-    local head_key = ""
+    local queek_obj = faction_obj:faction_leader()
 
-    local subtype_key = character_obj:character_subtype_key()
-    local subculture_key = character_obj:faction():subculture()
-
-    -- check if it was a special head first
-    if self.special_heads[subtype_key] ~= nil then
-        -- TODO disabling for now, no legendary heads!
-        --head_key = special_heads[subtype_key]
-        return false
-    else
-        head_key = self.valid_heads[subculture_key]
-    end
-
-    -- no head found for this subculture
-    if head_key == "" then
-        return false
-    end
-
-    --ModLog("adding head with key ["..head_key.."]")
-
+    -- TODO test that it's valid
     local faction_cooking_info = cm:model():world():cooking_system():faction_cooking_info(faction_obj)
 
     -- we already have this head, add it to the heads table
@@ -161,6 +147,32 @@ function headtaking:add_head(character_obj, queek_obj)
             666
         )
     end
+end
+
+function headtaking:add_head(character_obj, queek_obj)
+    local faction_obj = cm:get_faction(self.faction_key)
+    local head_key = ""
+
+    local subtype_key = character_obj:character_subtype_key()
+    local subculture_key = character_obj:faction():subculture()
+
+    -- check if it was a special head first
+    if self.special_heads[subtype_key] ~= nil then
+        -- TODO disabling for now, no legendary heads!
+        --head_key = special_heads[subtype_key]
+        return false
+    else
+        head_key = self.valid_heads[subculture_key]
+    end
+
+    -- no head found for this subculture
+    if head_key == "" then
+        return false
+    end
+
+    --ModLog("adding head with key ["..head_key.."]")
+
+    self:add_head_with_key(head_key)
 end
 
 -- TODO enable disable
