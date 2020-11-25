@@ -3,6 +3,8 @@ if __game_mode ~= __lib_type_campaign then
     return
 end
 
+-- TODO get all the UI hooked in here
+
 local headtaking = {
     heads = nil,
 
@@ -175,7 +177,7 @@ function headtaking:add_head(character_obj, queek_obj)
     self:add_head_with_key(head_key)
 end
 
--- TODO enable disable
+-- TODO enable the disable stuff
 function headtaking:loyalty_listeners(disable)
     if disable then
         core:remove_listener("queek_loyalty_stuff")

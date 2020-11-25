@@ -32,12 +32,27 @@ local function remove_component(uic_obj)
 end 
 
 local function ui_init()
-    local topbar = find_uicomponent("layout", "resources_bar", "topbar_list_parent")
+    ModLog("ui init")
+    local topbar = find_uicomponent(core:get_ui_root(), "layout", "resources_bar", "topbar_list_parent")
     if is_uicomponent(topbar) then
+        ModLog("topbar found")
         local uic = UIComponent(topbar:CreateComponent("queek_headtaking", "ui/campaign ui/queek_headtaking"))
 
+        if not is_uicomponent(uic) then
+            ModLog("uic not created?")
+            return false
+        end
+
+        -- print_all_uicomponent_children(uic)
+
+        --uic:SetVisible(true)
+        topbar:Layout()
+
         --find_uicomponent(uic, "grom_goals"):SetVisible(false)
-        find_uicomponent(uic, "trait"):SetImagePath("ui/skins/default/queektrait_icon_large.png")
+        local trait = find_uicomponent(uic, "trait")
+        trait:SetImagePath("ui/skins/default/queektrait_icon_large.png")
+    else
+        ModLog("topbar unfound?")
     end
 
     local function close_listener()
@@ -228,11 +243,11 @@ local function ui_init()
                 -- no head counts for nemesis heads!
                 if categories[i] ~= "CcoCookingIngredientGroupRecordnemesis_heads" then
                     for j = 0, ingredient_list:ChildCount() -1 do
+                        local child = UIComponent(ingredient_list:Find(j))
+                        local id = child:Id()
+
                         -- skip the "template_ingredient" boi
                         if id ~= "template_ingredient" then
-                            local child = UIComponent(ingredient_list:Find(j))
-                            local id = child:Id()
-    
                             local num_label = core:get_or_create_component("num_heads", "ui/vandy_lib/number_label", child)
                             num_label:SetStateText("0")
                             num_label:SetTooltipText("Number of Heads", true)
@@ -341,7 +356,7 @@ end
 
 
 cm:add_first_tick_callback(function()
-    if cm:get_local_faction(true) == faction_key then
+    if cm:get_local_faction_name(true) == faction_key then
         ui_init()
     end
 
