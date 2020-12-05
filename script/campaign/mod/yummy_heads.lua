@@ -243,11 +243,11 @@ local function ui_init()
                 -- no head counts for nemesis heads!
                 if categories[i] ~= "CcoCookingIngredientGroupRecordnemesis_heads" then
                     for j = 0, ingredient_list:ChildCount() -1 do
+                        -- skip the "template_ingredient" boi
                         local child = UIComponent(ingredient_list:Find(j))
                         local id = child:Id()
-
-                        -- skip the "template_ingredient" boi
                         if id ~= "template_ingredient" then
+    
                             local num_label = core:get_or_create_component("num_heads", "ui/vandy_lib/number_label", child)
                             num_label:SetStateText("0")
                             num_label:SetTooltipText("Number of Heads", true)
