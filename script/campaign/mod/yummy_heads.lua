@@ -262,7 +262,7 @@ local function ui_init()
     
                             local ingredient_key = string.gsub(id, "CcoCookingIngredientRecord", "")
 
-                            local num_heads = headtaking.heads[ingredient_key]
+                            local num_heads = headtaking.heads[ingredient_key]["num_heads"]
                             if num_heads and is_number(num_heads) then -- only continue if this head is tracked in the heads data table
                                 local slot_item = UIComponent(child:Find("slot_item"))
 

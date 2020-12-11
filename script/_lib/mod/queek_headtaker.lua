@@ -6,11 +6,14 @@ end
 -- TODO get all the UI hooked in here
 
 local headtaking = {
-    heads = nil,
+    heads = {},
 
     chance = 20,
     queek_subtype = "wh2_main_skv_queek_headtaker",
     faction_key = "wh2_main_skv_clan_mors",
+
+
+    wall_of_skulls = {},
 
     -- table matching subcultures to their head reward
     valid_heads = {
@@ -113,7 +116,9 @@ local excluded_legendary_lords = {
 
 local queek_subtype = "wh2_main_skv_queek_headtaker"
 
-function headtaking:add_head_with_key(head_key)
+
+
+function headtaking:add_head_with_key(head_key, details)
     if not is_string(head_key) then
         -- errmsg
         return false
@@ -125,16 +130,28 @@ function headtaking:add_head_with_key(head_key)
     -- TODO test that it's valid
     local faction_cooking_info = cm:model():world():cooking_system():faction_cooking_info(faction_obj)
 
-    -- we already have this head, add it to the heads table
-    if faction_cooking_info:is_ingredient_unlocked(head_key) then
-        self.heads[head_key] = self.heads[head_key] + 1
-        return false
+    if not self.heads[head_key] then
+        self.heads[head_key] = {
+            num_heads = 0,
+            history = {},
+        }
     end
 
-    cm:unlock_cooking_ingredient(faction_obj, head_key)
+    -- if we're passing in a "details" table, save it to the table for this head
+    if details and is_table(details) then
+        self.heads[head_key]["history"][#self.heads[head_key]["history"]+1] = details
+    end
 
-    -- set the num of heads for this head type to 1
-    self.heads[head_key] = 1
+    -- we already have this head, add it to the heads table
+    if faction_cooking_info:is_ingredient_unlocked(head_key) then
+        self.heads[head_key]["num_heads"] = self.heads[head_key]["num_heads"] + 1
+        -- return false
+    else
+        cm:unlock_cooking_ingredient(faction_obj, head_key)
+
+        -- set the num of heads for this head type to 1
+        self.heads[head_key]["num_heads"] = 1
+    end
     
     if faction_obj:is_human() then
         local loc_prefix = "event_feed_strings_text_yummy_head_unlocked_"
@@ -158,6 +175,32 @@ function headtaking:add_head(character_obj, queek_obj)
     local subtype_key = character_obj:character_subtype_key()
     local subculture_key = character_obj:faction():subculture()
 
+    local subtype = character_obj:character_subtype_key()
+    local forename = character_obj:get_forename()
+    local surname = character_obj:get_surname()
+    local flag_path = character_obj:flag_path()
+    local faction_key = character_obj:faction():name()
+    local level = character_obj:rank()
+    local region_key = ""
+    if character_obj:has_region() then
+        region_key = character_obj:region():name()
+    end
+
+    local turn_number = cm:model():turn_number()
+
+    local details = {
+        subtype = subtype,
+        forename = forename,
+        surname = surname,
+        flag_path = flag_path,
+        faction_key = faction_key,
+        level = level,
+        region_key = region_key,
+        turn_number = turn_number,
+    }
+
+    -- local str = string.format("Queek killed an enemy of faction %s with name %s %s, with subtype %s. Their flag is %s. Their level was %d. They were located in the region %s, and killed on turn number %d.", faction_key, forename, surname, subtype, flag_path, level, region_key, turn_number)
+
     -- check if it was a special head first
     if self.special_heads[subtype_key] ~= nil then
         -- TODO disabling for now, no legendary heads!
@@ -174,7 +217,7 @@ function headtaking:add_head(character_obj, queek_obj)
 
     --ModLog("adding head with key ["..head_key.."]")
 
-    self:add_head_with_key(head_key)
+    self:add_head_with_key(head_key, details)
 end
 
 -- TODO enable the disable stuff
@@ -228,9 +271,9 @@ function headtaking:init()
         local faction_cooking_info = cm:model():world():cooking_system():faction_cooking_info(faction_obj)
         for _, key in pairs(self.valid_heads) do
             if faction_cooking_info:is_ingredient_unlocked(key) then
-                self.heads[key] = 1
+                self.heads[key]["num_heads"] = 1
             else
-                self.heads[key] = "locked"
+                self.heads[key]["num_heads"] = -1 -- -1 is locked
             end
         end
     end
@@ -251,10 +294,10 @@ function headtaking:init()
             local character = context:character()
             --ModLog("char convalesced or killed'd")
 
-            return character:is_null_interface() == false and character:character_type("general") and character:has_military_force() and not character:military_force():is_armed_citizenry() and cm:pending_battle_cache_char_is_involved(cm:get_faction(self.faction_key):faction_leader()) and character:faction():name() ~= self.faction_key and not character:faction():is_quest_battle_faction()
+            return character:is_null_interface() == false and character:character_type("general") and character:has_military_force() --[[and not character:military_force():is_armed_citizenry()]] and cm:pending_battle_cache_char_is_involved(cm:get_faction(self.faction_key):faction_leader()) and character:faction():name() ~= self.faction_key and not character:faction():is_quest_battle_faction()
         end,
         function(context)
-            --ModLog("queek killed someone")
+            ModLog("queek killed someone")
             local killed_character = context:character()
             local queek_faction = cm:get_faction(self.faction_key)
             if not queek_faction or queek_faction:is_null_interface() then
@@ -345,10 +388,12 @@ function headtaking:init()
             local ingredients = cooked_dish:ingredients()
             local faction_effects = cooked_dish:faction_effects()
 
+            -- TODO edit the heads num_label fields and change the states, for each that were changed
+
             -- subtract each ingredient used by 1 in the heads table
             for i = 1, #ingredients do
                 local ingredient_key = ingredients[i]
-                self.heads[ingredient_key] = self.heads[ingredient_key] -1
+                self.heads[ingredient_key]["num_heads"] = self.heads[ingredient_key]["num_heads"] -1
                 --out("Ingredient used: "..ingredients[i])
             end
 
@@ -389,7 +434,7 @@ cm:add_first_tick_callback(function() headtaking:init() end)
 
 cm:add_loading_game_callback(
     function(context)
-        headtaking.heads = cm:load_named_value("headtaking_heads", {}, context)
+        headtaking.heads = cm:load_named_value("headtaking_heads", headtaking.heads, context)
     end
 )
 
