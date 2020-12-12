@@ -124,10 +124,6 @@ local function ui_init()
         --tt:SetVisible(false)
         remove_component(tt)
 
-        -- remove the scrap UI
-        local scrap_crap = find_uicomponent("queek_cauldron", "mid_colum", "cook_button_holder", "scrap_cost")
-        remove_component(scrap_crap)
-
         -- change* Grom's ugly gob
         local grom = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "trait")
         grom:SetImagePath("ui/skins/default/queektrait_icon_large.png")

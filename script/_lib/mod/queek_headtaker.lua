@@ -276,6 +276,8 @@ function headtaking:init()
                 self.heads[key]["num_heads"] = -1 -- -1 is locked
             end
         end
+
+        
     end
 
     -- first thing's first, enable using 4 ingredients for a recipe for queeky
