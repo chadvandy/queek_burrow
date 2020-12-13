@@ -525,9 +525,9 @@ function headtaking:ui_init()
         --uic:SetVisible(true)
         topbar:Layout()
 
-        --find_uicomponent(uic, "grom_goals"):SetVisible(false)
-        local trait = find_uicomponent(uic, "trait")
-        trait:SetImagePath("ui/skins/default/queektrait_icon_large.png")
+        -- --find_uicomponent(uic, "grom_goals"):SetVisible(false)
+        -- local trait = find_uicomponent(uic, "trait")
+        -- trait:SetImagePath("ui/skins/default/queektrait_icon_large.png")
     else
         -- ModLog("topbar unfound?")
     end
@@ -598,17 +598,17 @@ function headtaking:ui_init()
         --tt:SetVisible(false)
         remove_component(tt)
 
-        -- change* Grom's ugly gob
-        local grom = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "trait")
-        grom:SetImagePath("ui/skins/default/queektrait_icon_large.png")
+        -- -- change* Grom's ugly gob
+        -- local grom = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "trait")
+        -- grom:SetImagePath("ui/skins/default/queektrait_icon_large.png")
         --remove_component(grom)
 
         local slot_holder = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "ingredients_and_effects")
         local arch = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "arch")
 
-        -- hide the animated circles around the 3/4 slots
-        find_uicomponent(slot_holder, "main_ingredient_slot_1_animated_frame"):SetVisible(false)
-        find_uicomponent(slot_holder, "main_ingredient_slot_4_animated_frame"):SetVisible(false)
+        -- -- hide the animated circles around the 3/4 slots
+        -- find_uicomponent(slot_holder, "main_ingredient_slot_1_animated_frame"):SetVisible(false)
+        -- find_uicomponent(slot_holder, "main_ingredient_slot_4_animated_frame"):SetVisible(false)
 
 
         -- move the four slots to line up with the pikes
@@ -655,14 +655,16 @@ function headtaking:ui_init()
         local pos_x = 0
 
         local categories = {
-            "CcoCookingIngredientGroupRecordnemesis_heads",
-            "CcoCookingIngredientGroupRecordtier_one_heads",
-            "CcoCookingIngredientGroupRecordtier_two_heads",
-            "CcoCookingIngredientGroupRecordtier_three_heads",
+            "CcoCookingIngredientGroupRecordzzz_nemesis_heads",
+            "CcoCookingIngredientGroupRecordaaa_tier_one_heads",
+            "CcoCookingIngredientGroupRecordfff_tier_two_heads",
+            "CcoCookingIngredientGroupRecordmmm_tier_three_heads",
         }
+
+        local ok, err = pcall(function()
         
         for i = 1, #categories do
-            --ModLog("in loop ["..categories[i].."]")
+            ModLog("in loop ["..categories[i].."]")
             local uic = find_uicomponent(category_list, categories[i])
             if is_uicomponent(uic) then
                 local x,y = uic:Position()
@@ -673,17 +675,17 @@ function headtaking:ui_init()
                     if pos_y == 0 then
                         pos[j] = y
 
-                        --ModLog("pos_y is 0 in num ["..tostring(j).."]. new pos_y is ["..tostring(y))
+                        ModLog("pos_y is 0 in num ["..tostring(j).."]. new pos_y is ["..tostring(y))
 
                         break
                     end
 
                     if y < pos_y then
 
-                        --ModLog("pos_y ["..tostring(pos_y).."] is more than uic_y in num ["..tostring(j).."]. new pos_y is ["..tostring(y))
+                        ModLog("pos_y ["..tostring(pos_y).."] is more than uic_y in num ["..tostring(j).."]. new pos_y is ["..tostring(y))
                         pos[j] = y
                         if j ~= 4 then
-                            --ModLog("pushing pos_y ["..tostring(pos_y).."] to next index, ["..tostring(j+1).."]")
+                            ModLog("pushing pos_y ["..tostring(pos_y).."] to next index, ["..tostring(j+1).."]")
                             if pos[j+1] == 0 then
                                 pos[j+1] = pos_y
                             else
@@ -711,7 +713,7 @@ function headtaking:ui_init()
                 local ingredient_list = find_uicomponent(uic, "ingredient_list")
 
                 -- no head counts for nemesis heads!
-                if categories[i] ~= "CcoCookingIngredientGroupRecordnemesis_heads" then
+                if i ~= 1 then
                     for j = 0, ingredient_list:ChildCount() -1 do
                         -- skip the "template_ingredient" boi
                         local child = UIComponent(ingredient_list:Find(j))
@@ -732,16 +734,20 @@ function headtaking:ui_init()
     
                             local ingredient_key = string.gsub(id, "CcoCookingIngredientRecord", "")
 
-                            local num_heads = self.heads[ingredient_key]["num_heads"]
-                            if num_heads and is_number(num_heads) then -- only continue if this head is tracked in the heads data table
-                                local slot_item = UIComponent(child:Find("slot_item"))
+                            local head_obj = self.heads[ingredient_key]
 
-                                num_label:SetStateText(tostring(num_heads))
-                                num_label:SetVisible(true)
+                            if head_obj then
+                                local num_heads = head_obj["num_heads"]
+                                if num_heads and is_number(num_heads) then -- only continue if this head is tracked in the heads data table
+                                    local slot_item = UIComponent(child:Find("slot_item"))
 
-                                if num_heads == 0 then
-                                    slot_item:SetState("inactive")
-                                    slot_item:SetCurrentStateImageOpacity(1, 100)
+                                    num_label:SetStateText(tostring(num_heads))
+                                    num_label:SetVisible(true)
+
+                                    if num_heads == 0 then
+                                        slot_item:SetState("inactive")
+                                        slot_item:SetCurrentStateImageOpacity(1, 100)
+                                    end
                                 end
                             end
                         end
@@ -750,10 +756,13 @@ function headtaking:ui_init()
             end
         end
 
+    end) if not ok then ModLog(err) end
+
         for i = 1, #categories do
             local uic = find_uicomponent(category_list, categories[i])
             if is_uicomponent(uic) then
                 local pos_y = pos[i]
+                ModLog("Moving "..tostring(i).." to ("..tostring(pos_x)..", "..tostring(pos_y)..").")
                 uic:MoveTo(pos_x, pos_y)
             end
         end
