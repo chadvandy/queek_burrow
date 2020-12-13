@@ -8,7 +8,7 @@ end
 local headtaking = {
     heads = {},
 
-    chance = 20,
+    chance = 40,
     queek_subtype = "wh2_main_skv_queek_headtaker",
     faction_key = "wh2_main_skv_clan_mors",
 
