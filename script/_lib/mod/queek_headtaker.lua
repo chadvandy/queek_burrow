@@ -220,7 +220,6 @@ function headtaking:add_head(character_obj, queek_obj)
     local subtype_key = character_obj:character_subtype_key()
     local subculture_key = character_obj:faction():subculture()
 
-    local subtype = character_obj:character_subtype_key()
     local forename = character_obj:get_forename()
     local surname = character_obj:get_surname()
     local flag_path = character_obj:flag_path()
@@ -234,7 +233,7 @@ function headtaking:add_head(character_obj, queek_obj)
     local turn_number = cm:model():turn_number()
 
     local details = {
-        subtype = subtype,
+        subtype = subtype_key,
         forename = forename,
         surname = surname,
         flag_path = flag_path,
@@ -506,7 +505,6 @@ end
 
 -- this is called to refresh things like num_heads and the Collected Heads counter and what not
 function headtaking:ui_refresh()
-
 
 end
 
@@ -832,7 +830,7 @@ cm:add_first_tick_callback(function()
     headtaking:init() 
 
     if cm:get_local_faction_name(true) == headtaking.faction_key then
-        ui_init()
+        headtaking:ui_init()
     end
 end)
 
