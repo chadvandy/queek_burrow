@@ -6,11 +6,26 @@ end
 -- TODO get all the UI hooked in here
 
 local headtaking = {
-    heads = nil,
+    heads = {},
 
-    chance = 20,
+    -- add to this whenever a new legendary head is crafted
+    legendary_heads = {
+        "belegar",
+        "skarsnik",
+        "tretch",
+    },
+
+    legendary_heads_max = 0,
+
+    legendary_heads_num = 0,
+
+    chance = 40,
     queek_subtype = "wh2_main_skv_queek_headtaker",
     faction_key = "wh2_main_skv_clan_mors",
+
+    squeak_stage = 0,
+
+    wall_of_skulls = {},
 
     -- table matching subcultures to their head reward
     valid_heads = {
@@ -113,7 +128,9 @@ local excluded_legendary_lords = {
 
 local queek_subtype = "wh2_main_skv_queek_headtaker"
 
-function headtaking:add_head_with_key(head_key)
+
+
+function headtaking:add_head_with_key(head_key, details)
     if not is_string(head_key) then
         -- errmsg
         return false
@@ -125,16 +142,28 @@ function headtaking:add_head_with_key(head_key)
     -- TODO test that it's valid
     local faction_cooking_info = cm:model():world():cooking_system():faction_cooking_info(faction_obj)
 
-    -- we already have this head, add it to the heads table
-    if faction_cooking_info:is_ingredient_unlocked(head_key) then
-        self.heads[head_key] = self.heads[head_key] + 1
-        return false
+    if not self.heads[head_key] then
+        self.heads[head_key] = {
+            num_heads = 0,
+            history = {},
+        }
     end
 
-    cm:unlock_cooking_ingredient(faction_obj, head_key)
+    -- if we're passing in a "details" table, save it to the table for this head
+    if details and is_table(details) then
+        self.heads[head_key]["history"][#self.heads[head_key]["history"]+1] = details
+    end
 
-    -- set the num of heads for this head type to 1
-    self.heads[head_key] = 1
+    -- we already have this head, add it to the heads table
+    if faction_cooking_info:is_ingredient_unlocked(head_key) then
+        self.heads[head_key]["num_heads"] = self.heads[head_key]["num_heads"] + 1
+        -- return false
+    else
+        cm:unlock_cooking_ingredient(faction_obj, head_key)
+
+        -- set the num of heads for this head type to 1
+        self.heads[head_key]["num_heads"] = 1
+    end
     
     if faction_obj:is_human() then
         local loc_prefix = "event_feed_strings_text_yummy_head_unlocked_"
@@ -151,12 +180,82 @@ function headtaking:add_head_with_key(head_key)
     end
 end
 
+--[[
+-- effects:
+- 1-2 effects per head, avoid bloat ---- LOL
+- make 'em interesting and potentially affect gameplay
+- find a way to implement *some* form of bane
+--]]
+
+--[[ effect ideas:
+
+
+-- TODO Greenskin tunnel movement range     - further movement range in tunnels -- TODO this
+-- TODO Dwarf teleport army
+-- TODO Beastmen make more interesting
+-- TODO Bret impose chivalry
+-- TODO Chaos make more interesting
+-- TODO Dark Elf queek effect
+-- TODO Skaveny skaven
+-- TODO Empire free underempire \\ spawn witch hunters
+
+- generic_head_skaven
+Skaven - happy-frightened rats
+    - slightly-randomized happiness effects for a few turns -- TODO this
+        - general loyalty can jump up or down as a result
+        - PO will vary between +/-5 or so
+        - randomized LD effects
+        - randomized diplo with other skavenz
+
+    Bane:
+    - food drain with angry bois
+
+    - (TODO POTENTIALLY vary with multiple Clan heads!)
+
+Belegar
+    -
+    -
+    -
+
+Skarsnik
+    -
+    -
+    -
+
+
+]]
+
 function headtaking:add_head(character_obj, queek_obj)
     local faction_obj = cm:get_faction(self.faction_key)
     local head_key = ""
 
     local subtype_key = character_obj:character_subtype_key()
     local subculture_key = character_obj:faction():subculture()
+
+    local forename = character_obj:get_forename()
+    local surname = character_obj:get_surname()
+    local flag_path = character_obj:flag_path()
+    local faction_key = character_obj:faction():name()
+    local level = character_obj:rank()
+    local region_key = ""
+    if character_obj:has_region() then
+        region_key = character_obj:region():name()
+    end
+
+    local turn_number = cm:model():turn_number()
+
+    local details = {
+        subtype = subtype_key,
+        forename = forename,
+        surname = surname,
+        flag_path = flag_path,
+        faction_key = faction_key,
+        level = level,
+        region_key = region_key,
+        turn_number = turn_number,
+    }
+
+    -- local str = string.format("Queek killed an enemy of faction %s with name %s %s, with subtype %s. Their flag is %s. Their level was %d. They were located in the region %s, and killed on turn number %d.", faction_key, forename, surname, subtype, flag_path, level, region_key, turn_number)
 
     -- check if it was a special head first
     if self.special_heads[subtype_key] ~= nil then
@@ -174,7 +273,7 @@ function headtaking:add_head(character_obj, queek_obj)
 
     --ModLog("adding head with key ["..head_key.."]")
 
-    self:add_head_with_key(head_key)
+    self:add_head_with_key(head_key, details)
 end
 
 -- TODO enable the disable stuff
@@ -214,6 +313,39 @@ function headtaking:loyalty_listeners(disable)
     )
 end
 
+function headtaking:squeak_init()
+    local stage = self.squeak_stage
+
+    -- first stage, Squeak is unacquired - guarantee his aquisition the next head taken
+    if stage == 0 then
+
+    else
+
+    end
+end
+
+-- count & save the number of legendary heads thusfar obtained
+function headtaking:init_count_heads()
+    local faction_obj = cm:get_faction(self.faction_key)
+
+    -- self.legendary_heads_num = 0
+
+    local faction_cooking_info = cm:model():world():cooking_system():faction_cooking_info(faction_obj)
+
+    local legendary_heads = self.legendary_heads
+
+    for i = 1, #legendary_heads do
+        local key = legendary_heads[i]
+        local str = "legendary_head_"..key
+
+        if faction_cooking_info:is_ingredient_unlocked(str) then
+            self.legendary_heads_num = self.legendary_heads_num + 1
+        end
+    end
+
+    self.legendary_heads_max = #legendary_heads
+end
+
 -- initialize the mod stuff!
 function headtaking:init()
     local faction_obj = cm:get_faction(self.faction_key)
@@ -228,18 +360,20 @@ function headtaking:init()
         local faction_cooking_info = cm:model():world():cooking_system():faction_cooking_info(faction_obj)
         for _, key in pairs(self.valid_heads) do
             if faction_cooking_info:is_ingredient_unlocked(key) then
-                self.heads[key] = 1
+                self.heads[key]["num_heads"] = 1
             else
-                self.heads[key] = "locked"
+                self.heads[key]["num_heads"] = -1 -- -1 is locked
             end
         end
+
+        -- first thing's first, enable using 4 ingredients for a recipe for queeky
+        -- TODO temp disabled secondaries until the unlock mechanic is introduced
+        cm:set_faction_max_primary_cooking_ingredients(faction_obj, 2)
+        cm:set_faction_max_secondary_cooking_ingredients(faction_obj, 0)
     end
 
-    -- first thing's first, enable using 4 ingredients for a recipe for queeky
-    -- TODO temp disabled secondaries until the unlock mechanic is introduced
-    --
-    cm:set_faction_max_primary_cooking_ingredients(faction_obj, 2)
-    cm:set_faction_max_secondary_cooking_ingredients(faction_obj, 0)
+    self:init_count_heads()
+    self:squeak_init()
 
     --loyalty_listeners()
 
@@ -251,38 +385,24 @@ function headtaking:init()
             local character = context:character()
             --ModLog("char convalesced or killed'd")
 
-            return character:is_null_interface() == false and character:character_type("general") and character:has_military_force() and not character:military_force():is_armed_citizenry() and cm:pending_battle_cache_char_is_involved(cm:get_faction(self.faction_key):faction_leader()) and character:faction():name() ~= self.faction_key and not character:faction():is_quest_battle_faction()
+            return character:is_null_interface() == false and character:character_type("general") and character:has_military_force() --[[and not character:military_force():is_armed_citizenry()]] and cm:pending_battle_cache_char_is_involved(cm:get_faction(self.faction_key):faction_leader()) and character:faction():name() ~= self.faction_key and not character:faction():is_quest_battle_faction()
         end,
         function(context)
-            --ModLog("queek killed someone")
+            ModLog("queek killed someone")
             local killed_character = context:character()
             local queek_faction = cm:get_faction(self.faction_key)
             if not queek_faction or queek_faction:is_null_interface() then
                 return false
             end
 
-            --ModLog("queek involved")
-
             local queek = queek_faction:faction_leader()
-            --local pb = cm:model():pending_battle()
 
-            --ModLog("add head")
-
+            -- TODO variable chance here
             local rand = cm:random_number(100, 1)
 
             if rand <= self.chance then
                 self:add_head(killed_character, queek)
-            end
-            --ModLog("head added")
-
-            -- check what side peeps were on
-            --[[if cm:pending_battle_cache_char_is_attacker(queek) then
-                -- Queek attacked
-
-            elseif cm:pending_battle_cache_char_is_defender(queek) then
-                -- Queek defended
-            end]]
-            
+            end            
         end,
         true
     )
@@ -345,10 +465,12 @@ function headtaking:init()
             local ingredients = cooked_dish:ingredients()
             local faction_effects = cooked_dish:faction_effects()
 
+            -- TODO edit the heads num_label fields and change the states, for each that were changed
+
             -- subtract each ingredient used by 1 in the heads table
             for i = 1, #ingredients do
                 local ingredient_key = ingredients[i]
-                self.heads[ingredient_key] = self.heads[ingredient_key] -1
+                self.heads[ingredient_key]["num_heads"] = self.heads[ingredient_key]["num_heads"] -1
                 --out("Ingredient used: "..ingredients[i])
             end
 
@@ -383,18 +505,389 @@ function headtaking:init()
     )
 end
 
+local function remove_component(uic_obj)
+    if is_uicomponent(uic_obj) then
+        uic_obj = {uic_obj}
+    end
+
+    if not is_table(uic_obj) then
+        -- issue
+        script_error("remove_component() called, but the uic obj supplied wasn't a single UIC or a table of UIC's!")
+        return false
+    end
+
+    if not is_uicomponent(uic_obj[1]) then
+        -- issue
+        script_error("remove_component() called, but the uic obj supplied wasn't a single UIC or a table of UIC's!")
+        return false
+    end
+
+    local killer = core:get_or_create_component("killer", "ui/campaign ui/script_dummy")
+
+    for i = 1, #uic_obj do
+        local uic = uic_obj[i]
+        if is_uicomponent(uic) then
+            killer:Adopt(uic:Address())
+        end
+    end
+
+    killer:DestroyChildren()
+end
+
+-- this is called to refresh things like num_heads and the Collected Heads counter and what not
+function headtaking:ui_refresh()
+
+end
+
+function headtaking:ui_init()
+    -- ModLog("ui init")
+    local topbar = find_uicomponent(core:get_ui_root(), "layout", "resources_bar", "topbar_list_parent")
+    if is_uicomponent(topbar) then
+        -- ModLog("topbar found")
+        local uic = UIComponent(topbar:CreateComponent("queek_headtaking", "ui/campaign ui/queek_headtaking"))
+
+        if not is_uicomponent(uic) then
+            -- ModLog("uic not created?")
+            return false
+        end
+
+        local grom_goals = uic:SequentialFind("grom_goals")
+
+        grom_goals:SetState("hover")
+        grom_goals:SetStateText(tostring(self.legendary_heads_num) .. " / "..tostring(self.legendary_heads_max))
+
+        grom_goals:SetState("NewState")
+        grom_goals:SetStateText(tostring(self.legendary_heads_num) .. " / "..tostring(self.legendary_heads_max))
+
+        -- print_all_uicomponent_children(uic)
+
+        --uic:SetVisible(true)
+        topbar:Layout()
+
+        -- --find_uicomponent(uic, "grom_goals"):SetVisible(false)
+        -- local trait = find_uicomponent(uic, "trait")
+        -- trait:SetImagePath("ui/skins/default/queektrait_icon_large.png")
+    else
+        -- ModLog("topbar unfound?")
+    end
+
+    local function close_listener()
+        core:add_listener(
+            "queek_close_panel",
+            "ComponentLClickUp",
+            function(context)
+                local uic = find_uicomponent("queek_cauldron", "right_colum", "exit_panel_button")
+                if is_uicomponent(uic) then
+                    return context.component == uic:Address()
+                end
+                return false
+            end,
+            function(context)
+                local panel = find_uicomponent("queek_cauldron")
+
+                remove_component(panel)
+
+                -- reenable the esc key
+                cm:steal_escape_key(false)
+
+                core:remove_listener("queek_close_panel")
+            end,
+            false
+        )
+
+        core:add_listener(
+            "queek_close_panel",
+            "ShortcutTriggered",
+            function(context) 
+                return context.string == "escape_menu"
+            end,
+            function(context)
+                local panel = find_uicomponent("queek_cauldron")
+                remove_component(panel)
+
+                -- reenable the esc key
+                cm:steal_escape_key(false)
+
+                core:remove_listener("queek_close_panel")
+            end,
+            false
+        )
+    end
+
+    local function opened_up()
+        -- prevent the esc key being used
+        cm:steal_escape_key(true)
+
+        -- move the effect list tt out of the way
+        local effect_list = find_uicomponent("queek_cauldron", "left_colum", "ingredients_holder", "component_tooltip")
+        --[[local lview = find_uicomponent(effect_list, "ingredient_effects", "effects_listview")
+        local lclip = find_uicomponent(lview, "list_clip")
+        local lbox = find_uicomponent(lclip, "list_box")]]
+        local x,y = effect_list:GetDockOffset()
+        --local px, py = core:get_screen_resolution()
+        local fx = x --(px * 0.67) + x
+
+        effect_list:SetDockOffset(fx, y * 1.25)
+        effect_list:SetCanResizeHeight(true)
+        effect_list:Resize(effect_list:Width(), effect_list:Height() *1.45)
+        effect_list:SetCanResizeHeight(false)
+        
+        -- double made for no reason --TODO make it for a reason?
+        local tt = find_uicomponent("queek_cauldron", "left_colum", "ingredients_holder", "component_tooltip2")
+        --tt:SetVisible(false)
+        remove_component(tt)
+
+        -- change the text on Collected Heads / Collected Legendary Heads
+        local heads_num = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "ingredients_progress_holder", "ingredients_progress_number")
+
+        local legendary_num = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "recipes_progress_holder", "recipes_progress_number")
+        legendary_num:SetStateText(tostring(self.legendary_heads_num) .. " / " .. tostring(self.legendary_heads_max))
+
+        local slot_holder = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "ingredients_and_effects")
+        local arch = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "arch")
+
+        -- move the four slots to line up with the pikes
+        local pikes = {
+            [1] = 167,
+            [2] = 251,
+            [3] = 369,
+            [4] = 450
+        }
+
+        local shx, _ = slot_holder:Position()
+        local arx, _ = arch:Position()
+
+        for i,v in ipairs(pikes) do
+            local pike_pos = v
+            local slot = find_uicomponent(slot_holder, "main_ingredient_slot_"..tostring(i))
+
+            local _, sloty = slot:Position()
+            local w,_ = slot:Dimensions()
+
+            -- this is the hard position on the screen where the middleish of the pike is (pike is 8px wide)
+            local end_x = arx + (pike_pos + 4)
+
+            -- grab the offset between the slot holder's position and the end result
+            local slotx = end_x - (w/2)
+
+            -- for some reason I'm 14 off, so
+            slotx = slotx - 14
+
+            -- move it
+            slot:MoveTo(slotx, sloty)
+        end
+
+        -- move the four rows so it goes Nemesis -> T1 -> T2 -> T3
+        local category_list = find_uicomponent("queek_cauldron", "left_colum", "ingredients_holder", "ingredient_category_list")
+
+        local pos = {
+            [1] = 0, -- nemesis
+            [2] = 0, -- tier one
+            [3] = 0, -- tier two
+            [4] = 0 -- tier three
+        }
+
+        local pos_x = 0
+
+        local categories = {
+            "CcoCookingIngredientGroupRecordzzz_nemesis_heads",
+            "CcoCookingIngredientGroupRecordaaa_tier_one_heads",
+            "CcoCookingIngredientGroupRecordfff_tier_two_heads",
+            "CcoCookingIngredientGroupRecordmmm_tier_three_heads",
+        }
+
+        local ok, err = pcall(function()
+        
+        for i = 1, #categories do
+            ModLog("in loop ["..categories[i].."]")
+            local uic = find_uicomponent(category_list, categories[i])
+            if is_uicomponent(uic) then
+                local x,y = uic:Position()
+                pos_x = x
+
+                for j,pos_y in ipairs(pos) do
+                    --local pos_y = pos[j]
+                    if pos_y == 0 then
+                        pos[j] = y
+
+                        ModLog("pos_y is 0 in num ["..tostring(j).."]. new pos_y is ["..tostring(y))
+
+                        break
+                    end
+
+                    if y < pos_y then
+
+                        ModLog("pos_y ["..tostring(pos_y).."] is more than uic_y in num ["..tostring(j).."]. new pos_y is ["..tostring(y))
+                        pos[j] = y
+                        if j ~= 4 then
+                            ModLog("pushing pos_y ["..tostring(pos_y).."] to next index, ["..tostring(j+1).."]")
+                            if pos[j+1] == 0 then
+                                pos[j+1] = pos_y
+                            else
+                                -- TODO BAD CODE UGLY BAD BAD BAD BAD (written at midnight pls forgive me, future me)
+                                local old_y = pos[j+1]
+                                if pos[j+2] == 0 then
+                                    pos[j+2] = old_y
+                                    pos[j+1] = pos_y
+                                else
+                                    local oldest_y = pos[j+2]
+                                    if pos[j+3] == 0 then
+                                        pos[j+1] = pos_y
+                                        pos[j+2] = old_y
+                                        pos[j+3] = oldest_y
+                                    end
+                                end
+                            end
+                        end
+
+                        break
+                    end
+                end
+
+                -- loop through all ingredients, check their amounts in the headtaking table
+                local ingredient_list = find_uicomponent(uic, "ingredient_list")
+
+                -- no head counts for nemesis heads!
+                if i ~= 1 then
+                    for j = 0, ingredient_list:ChildCount() -1 do
+                        -- skip the "template_ingredient" boi
+                        local child = UIComponent(ingredient_list:Find(j))
+                        local id = child:Id()
+                        if id ~= "template_ingredient" then
+    
+                            local num_label = core:get_or_create_component("num_heads", "ui/vandy_lib/number_label", child)
+                            num_label:SetStateText("0")
+                            num_label:SetTooltipText("Number of Heads", true)
+                            num_label:SetDockingPoint(3)
+                            num_label:SetDockOffset(5, -5)
+    
+                            num_label:SetCanResizeWidth(true) num_label:SetCanResizeHeight(true)
+                            num_label:Resize(num_label:Width() /2, num_label:Height() /2)
+                            num_label:SetCanResizeWidth(false) num_label:SetCanResizeHeight(false)
+    
+                            num_label:SetVisible(false)
+    
+                            local ingredient_key = string.gsub(id, "CcoCookingIngredientRecord", "")
+
+                            local head_obj = self.heads[ingredient_key]
+
+                            if head_obj then
+                                local num_heads = head_obj["num_heads"]
+                                if num_heads and is_number(num_heads) then -- only continue if this head is tracked in the heads data table
+                                    local slot_item = UIComponent(child:Find("slot_item"))
+
+                                    num_label:SetStateText(tostring(num_heads))
+                                    num_label:SetVisible(true)
+
+                                    if num_heads == 0 then
+                                        slot_item:SetState("inactive")
+                                        slot_item:SetCurrentStateImageOpacity(1, 100)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+    end) if not ok then ModLog(err) end
+
+        for i = 1, #categories do
+            local uic = find_uicomponent(category_list, categories[i])
+            if is_uicomponent(uic) then
+                local pos_y = pos[i]
+                ModLog("Moving "..tostring(i).." to ("..tostring(pos_x)..", "..tostring(pos_y)..").")
+                uic:MoveTo(pos_x, pos_y)
+            end
+        end
+
+        --[[local adjusted_pos = {}
+        for i = 1, #pos do
+            local position = pos[i]
+            
+            if i == 1 then
+                adjusted_pos[i] = position
+            else
+                local compare = pos[1]
+                if position.y > compare.y then
+                    adjusted_pos[1] = position
+                    adjusted_pos[i] = compare
+                end
+            end
+        end]]
+
+        --[[local cook_button = find_uicomponent("queek_cauldron", "mid_colum", "cook_button_holder", "cook_button")
+        cook_button:SetStateText("Assemble Trophy Rack")
+        cook_button:SetTooltipText("Assign heads onto the trophy ")]]
+    end
+
+    local function test_open()
+        -- check every UI tick if the queek cauldron is open - once it is, make the edits
+        -- the following triggers an RealTimeTrigger event with the string "queek_cauldron_test_open" every single UI tick
+        real_timer.register_repeating("queek_cauldron_test_open", 0)
+
+        core:add_listener(
+            "test_if_open",
+            "RealTimeTrigger",
+            function(context)
+                --ModLog("test_if_open!")
+                return context.string == "queek_cauldron_test_open" and is_uicomponent(find_uicomponent("queek_cauldron")) and is_uicomponent(find_uicomponent("queek_cauldron", "left_colum", "ingredients_holder", "component_tooltip"))
+            end,
+            function(context)
+                -- stop triggering!
+                --ModLog("opened!")
+                real_timer.unregister("queek_cauldron_test_open")
+                --ModLog("testing!")
+                --local ok, err = pcall(function()
+                opened_up() --end) --if not ok then ModLog(err) end
+                --ModLog("ended!")
+            end,
+            false
+        )
+    end
+
+    core:add_listener(
+        "queek_button_pressed",
+        "ComponentLClickUp",
+        function(context)
+            return context.string == "queek_headtaking"
+        end,
+        function(context)
+            local root = core:get_ui_root()
+            local test = find_uicomponent("queek_cauldron")
+            if not is_uicomponent(test) then
+                root:CreateComponent("queek_cauldron", "ui/campaign ui/queek_cauldron_panel")
+
+                test_open()
+                
+                close_listener()
+            end
+        end,
+        true
+    )
+end
+
 core:add_static_object("headtaking", headtaking)
 
-cm:add_first_tick_callback(function() headtaking:init() end)
+cm:add_first_tick_callback(function() 
+    headtaking:init() 
+
+    if cm:get_local_faction_name(true) == headtaking.faction_key then
+        headtaking:ui_init()
+    end
+end)
 
 cm:add_loading_game_callback(
     function(context)
-        headtaking.heads = cm:load_named_value("headtaking_heads", {}, context)
+        headtaking.heads = cm:load_named_value("headtaking_heads", headtaking.heads, context)
+        headtaking.squeak_stage = cm:load_named_value("headtaking_squeak_stage", headtaking.squeak_stage, context)
     end
 )
 
 cm:add_saving_game_callback(
     function(context)
         cm:save_named_value("headtaking_heads", headtaking.heads, context)
+        cm:save_named_value("headtaking_squeak_stage", headtaking.squeak_stage, context)
     end
 )
