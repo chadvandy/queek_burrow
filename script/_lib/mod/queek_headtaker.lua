@@ -553,6 +553,10 @@ function headtaking:ui_init()
 
         local grom_goals = uic:SequentialFind("grom_goals")
 
+        grom_goals:SetState("hover")
+        grom_goals:SetStateText(tostring(self.legendary_heads_num) .. " / "..tostring(self.legendary_heads_max))
+
+        grom_goals:SetState("NewState")
         grom_goals:SetStateText(tostring(self.legendary_heads_num) .. " / "..tostring(self.legendary_heads_max))
 
         -- print_all_uicomponent_children(uic)
@@ -633,18 +637,14 @@ function headtaking:ui_init()
         --tt:SetVisible(false)
         remove_component(tt)
 
-        -- -- change* Grom's ugly gob
-        -- local grom = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "trait")
-        -- grom:SetImagePath("ui/skins/default/queektrait_icon_large.png")
-        --remove_component(grom)
+        -- change the text on Collected Heads / Collected Legendary Heads
+        local heads_num = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "ingredients_progress_holder", "ingredients_progress_number")
+
+        local legendary_num = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "recipes_progress_holder", "recipes_progress_number")
+        legendary_num:SetStateText(tostring(self.legendary_heads_num) .. " / " .. tostring(self.legendary_heads_max))
 
         local slot_holder = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "ingredients_and_effects")
         local arch = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "arch")
-
-        -- -- hide the animated circles around the 3/4 slots
-        -- find_uicomponent(slot_holder, "main_ingredient_slot_1_animated_frame"):SetVisible(false)
-        -- find_uicomponent(slot_holder, "main_ingredient_slot_4_animated_frame"):SetVisible(false)
-
 
         -- move the four slots to line up with the pikes
         local pikes = {
