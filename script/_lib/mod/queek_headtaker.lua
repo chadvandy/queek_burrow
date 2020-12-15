@@ -4,7 +4,9 @@ if __game_mode ~= __lib_type_campaign then
 end
 
 local headtaking = {
-    -- keep track of all the head objects, and the "history" fields. tracks the number of heads currently available
+    -- keep track of all the head objects
+
+    -- links head keys to the amount of hedz
     heads = {},
 
     -- count the total number of heads ever, including all current and all previously spent heads
@@ -138,6 +140,8 @@ function headtaking:add_head_with_key(head_key, details)
         return false
     end
 
+    ModLog("adding head with key "..head_key)
+
     local faction_obj = cm:get_faction(self.faction_key)
     local queek_obj = faction_obj:faction_leader()
 
@@ -170,6 +174,9 @@ function headtaking:add_head_with_key(head_key, details)
     -- iter the head total trackers
     self.total_heads = self.total_heads + 1
     self.current_heads = self.current_heads + 1
+
+    ModLog("New total heads counter is: "..tostring(self.total_heads))
+    ModLog("New current heads counter is: "..tostring(self.current_heads))
     
     if faction_obj:is_human() then
         local loc_prefix = "event_feed_strings_text_yummy_head_unlocked_"
@@ -322,7 +329,9 @@ function headtaking:loyalty_listeners(disable)
 end
 
 function headtaking:squeak_init()
+    ModLog("Squeak init!")
     local stage = self.squeak_stage
+    ModLog("Stage is "..tostring(stage))
 
     -- first stage, Squeak is unacquired - guarantee his aquisition the next head taken
     if stage == 0 then
@@ -333,14 +342,17 @@ function headtaking:squeak_init()
                 ModLog("Checking if Squeak add do")
                 local total_heads = self.total_heads
                 local chance = 0
+                ModLog("Current total heads: "..tostring(total_heads))
                 
                 -- chance is 50% on the first head collected (2, since Queek starts with one)
                 if total_heads == 2 then
-                    chance = 50
+                    return true
                 elseif total_heads == 3 then
+                    chance = 50
+                elseif total_heads == 4 then
                     chance = 75
-                elseif total_heads >= 4 then
-                    chance = 100
+                elseif total_heads >= 5 then
+                    return true
                 end
 
                 -- if chance is 50, then the random_number returning 1-50 will pass, so on.
@@ -351,11 +363,20 @@ function headtaking:squeak_init()
                 return ran <= chance
             end,
             function(context)
+                local total_heads = self.total_heads
+
+                -- if this is the first head caught, then simply trigger an incident
+                if total_heads == 2 then
+                    cm:trigger_incident(self.faction_key, "squeak_scurry", true)
+
+                    return
+                end
+
                 -- add Squeak
                 -- trigger incident
                 -- set stage to next
             end,
-            false
+            true
         )
     elseif stage == 1 then
 
@@ -390,9 +411,14 @@ function headtaking:init_count_heads()
 
     local num = 0
 
-    -- add the 
+    -- add the total of all current heads
     for _, head_obj in pairs(heads) do
-        num = num + head_obj.num_heads
+        local num_heads = head_obj.num_heads
+
+        -- ignore 0 and -1
+        if num_heads > 0 then
+            num = num + num_heads
+        end
     end
 
     self.current_heads = num
@@ -408,7 +434,9 @@ function headtaking:init()
     end
 
     -- set up the self.heads table - it tracks the number of heads available, or if a head is locked
-    if cm:is_new_game() or self.heads == nil then
+    if cm:is_new_game() or self.heads == {} then
+        ModLog("setting up fresh heads")
+
         local faction_cooking_info = cm:model():world():cooking_system():faction_cooking_info(faction_obj)
         for _, key in pairs(self.valid_heads) do
 
@@ -432,6 +460,8 @@ function headtaking:init()
         cm:set_faction_max_primary_cooking_ingredients(faction_obj, 2)
         cm:set_faction_max_secondary_cooking_ingredients(faction_obj, 0)
     end
+
+    ModLog("Heads table: "..tostring(self.heads))
 
     self:init_count_heads()
     self:squeak_init()
@@ -922,18 +952,20 @@ end
 
 core:add_static_object("headtaking", headtaking)
 
-cm:add_first_tick_callback(function() 
-    headtaking:init() 
+cm:add_first_tick_callback(function()
+    local ok, err = pcall(function()
+        headtaking:init() 
 
-    if cm:get_local_faction_name(true) == headtaking.faction_key then
-        headtaking:ui_init()
-    end
+        if cm:get_local_faction_name(true) == headtaking.faction_key then
+            headtaking:ui_init()
+        end 
+    end) if not ok then ModLog(err) end
 end)
 
 cm:add_loading_game_callback(
     function(context)
         headtaking.heads = cm:load_named_value("headtaking_heads", headtaking.heads, context)
-        headtaking.total_heads = cm:load_named_value("headtaking_heads", headtaking.total_heads, context)
+        headtaking.total_heads = cm:load_named_value("headtaking_total_heads", headtaking.total_heads, context)
         headtaking.squeak_stage = cm:load_named_value("headtaking_squeak_stage", headtaking.squeak_stage, context)
     end
 )
