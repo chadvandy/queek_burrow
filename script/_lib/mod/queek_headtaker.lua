@@ -3,10 +3,15 @@ if __game_mode ~= __lib_type_campaign then
     return
 end
 
--- TODO get all the UI hooked in here
-
 local headtaking = {
+    -- keep track of all the head objects, and the "history" fields. tracks the number of heads currently available
     heads = {},
+
+    -- count the total number of heads ever, including all current and all previously spent heads
+    total_heads = 0,
+
+    -- count the current total number of heads
+    current_heads = 0,
 
     -- add to this whenever a new legendary head is crafted
     legendary_heads = {
@@ -16,16 +21,13 @@ local headtaking = {
     },
 
     legendary_heads_max = 0,
-
     legendary_heads_num = 0,
-
-    chance = 40,
-    queek_subtype = "wh2_main_skv_queek_headtaker",
-    faction_key = "wh2_main_skv_clan_mors",
 
     squeak_stage = 0,
 
-    wall_of_skulls = {},
+    chance = 100,
+    queek_subtype = "wh2_main_skv_queek_headtaker",
+    faction_key = "wh2_main_skv_clan_mors",
 
     -- table matching subcultures to their head reward
     valid_heads = {
@@ -164,6 +166,10 @@ function headtaking:add_head_with_key(head_key, details)
         -- set the num of heads for this head type to 1
         self.heads[head_key]["num_heads"] = 1
     end
+
+    -- iter the head total trackers
+    self.total_heads = self.total_heads + 1
+    self.current_heads = self.current_heads + 1
     
     if faction_obj:is_human() then
         local loc_prefix = "event_feed_strings_text_yummy_head_unlocked_"
@@ -178,6 +184,8 @@ function headtaking:add_head_with_key(head_key, details)
             666
         )
     end
+
+    core:trigger_custom_event("HeadtakingCollectedHead", {["headtaking"] = self, ["head"] = self.heads[head_key]})
 end
 
 --[[
@@ -318,6 +326,38 @@ function headtaking:squeak_init()
 
     -- first stage, Squeak is unacquired - guarantee his aquisition the next head taken
     if stage == 0 then
+        core:add_listener(
+            "AddSqueakPls",
+            "HeadtakingCollectedHead",
+            function(context)
+                ModLog("Checking if Squeak add do")
+                local total_heads = self.total_heads
+                local chance = 0
+                
+                -- chance is 50% on the first head collected (2, since Queek starts with one)
+                if total_heads == 2 then
+                    chance = 50
+                elseif total_heads == 3 then
+                    chance = 75
+                elseif total_heads >= 4 then
+                    chance = 100
+                end
+
+                -- if chance is 50, then the random_number returning 1-50 will pass, so on.
+                local ran = cm:random_number(100,1)
+
+                ModLog("ran calc'd is: "..tostring(ran))
+
+                return ran <= chance
+            end,
+            function(context)
+                -- add Squeak
+                -- trigger incident
+                -- set stage to next
+            end,
+            false
+        )
+    elseif stage == 1 then
 
     else
 
@@ -344,6 +384,18 @@ function headtaking:init_count_heads()
     end
 
     self.legendary_heads_max = #legendary_heads
+
+    -- grab the current number of heads for internal tracking
+    local heads = self.heads
+
+    local num = 0
+
+    -- add the 
+    for _, head_obj in pairs(heads) do
+        num = num + head_obj.num_heads
+    end
+
+    self.current_heads = num
 end
 
 -- initialize the mod stuff!
@@ -359,12 +411,21 @@ function headtaking:init()
     if cm:is_new_game() or self.heads == nil then
         local faction_cooking_info = cm:model():world():cooking_system():faction_cooking_info(faction_obj)
         for _, key in pairs(self.valid_heads) do
+
+            self.heads[key] = {
+                num_heads = 0,
+                history = {},
+            }
+
             if faction_cooking_info:is_ingredient_unlocked(key) then
                 self.heads[key]["num_heads"] = 1
             else
                 self.heads[key]["num_heads"] = -1 -- -1 is locked
             end
         end
+
+        -- TODO add details manually
+        self:add_head_with_key("generic_head_skaven")
 
         -- first thing's first, enable using 4 ingredients for a recipe for queeky
         -- TODO temp disabled secondaries until the unlock mechanic is introduced
@@ -571,7 +632,7 @@ function headtaking:set_head_counters()
                     num_label:SetStateText("0")
                     num_label:SetTooltipText("Number of Heads", true)
                     num_label:SetDockingPoint(3)
-                    num_label:SetDockOffset(5, -5)
+                    num_label:SetDockOffset(0, 0)
     
                     num_label:SetCanResizeWidth(true) num_label:SetCanResizeHeight(true)
                     num_label:Resize(num_label:Width() /2, num_label:Height() /2)
@@ -585,7 +646,7 @@ function headtaking:set_head_counters()
 
                     if head_obj then
                         local num_heads = head_obj["num_heads"]
-                        if num_heads and is_number(num_heads) then -- only continue if this head is tracked in the heads data table
+                        if num_heads and is_number(num_heads) and num_heads ~= -1 then -- only continue if this head is tracked in the heads data table
                             local slot_item = UIComponent(ingredient:Find("slot_item"))
 
                             num_label:SetStateText(tostring(num_heads))
@@ -872,6 +933,7 @@ end)
 cm:add_loading_game_callback(
     function(context)
         headtaking.heads = cm:load_named_value("headtaking_heads", headtaking.heads, context)
+        headtaking.total_heads = cm:load_named_value("headtaking_heads", headtaking.total_heads, context)
         headtaking.squeak_stage = cm:load_named_value("headtaking_squeak_stage", headtaking.squeak_stage, context)
     end
 )
@@ -879,6 +941,7 @@ cm:add_loading_game_callback(
 cm:add_saving_game_callback(
     function(context)
         cm:save_named_value("headtaking_heads", headtaking.heads, context)
+        cm:save_named_value("headtaking_total_heads", headtaking.total_heads, context)
         cm:save_named_value("headtaking_squeak_stage", headtaking.squeak_stage, context)
     end
 )
