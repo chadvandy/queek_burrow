@@ -697,110 +697,185 @@ function headtaking:ui_init()
         }
 
         local ok, err = pcall(function()
-        
-        for i = 1, #categories do
-            ModLog("in loop ["..categories[i].."]")
-            local uic = find_uicomponent(category_list, categories[i])
-            if is_uicomponent(uic) then
-                local x,y = uic:Position()
-                pos_x = x
+            ModLog("starting add list view")
+            -- add in the listview, bluh
+            local list_view = UIComponent(category_list:CreateComponent("list_view", "ui/vandy_lib/vlist"))
 
-                for j,pos_y in ipairs(pos) do
-                    --local pos_y = pos[j]
-                    if pos_y == 0 then
-                        pos[j] = y
+            local list_clip = UIComponent(list_view:Find("list_clip"))
+            local list_box = UIComponent(list_clip:Find("list_box"))
+            local vslider = UIComponent(list_view:Find("vslider"))
 
-                        ModLog("pos_y is 0 in num ["..tostring(j).."]. new pos_y is ["..tostring(y))
+            local cw,ch = category_list:Dimensions()
+            ModLog("Dimensions are: ("..tostring(cw)..", "..tostring(ch)..")")
+            list_view:SetCanResizeHeight(true)
+            list_view:SetCanResizeWidth(true)
 
-                        break
-                    end
+            list_clip:SetCanResizeHeight(true)
+            list_clip:SetCanResizeWidth(true)
 
-                    if y < pos_y then
+            ModLog("Bloop a doop")
 
-                        ModLog("pos_y ["..tostring(pos_y).."] is more than uic_y in num ["..tostring(j).."]. new pos_y is ["..tostring(y))
-                        pos[j] = y
-                        if j ~= 4 then
-                            ModLog("pushing pos_y ["..tostring(pos_y).."] to next index, ["..tostring(j+1).."]")
-                            if pos[j+1] == 0 then
-                                pos[j+1] = pos_y
-                            else
-                                -- TODO BAD CODE UGLY BAD BAD BAD BAD (written at midnight pls forgive me, future me)
-                                local old_y = pos[j+1]
-                                if pos[j+2] == 0 then
-                                    pos[j+2] = old_y
-                                    pos[j+1] = pos_y
-                                else
-                                    local oldest_y = pos[j+2]
-                                    if pos[j+3] == 0 then
-                                        pos[j+1] = pos_y
-                                        pos[j+2] = old_y
-                                        pos[j+3] = oldest_y
-                                    end
-                                end
-                            end
-                        end
+            list_box:SetCanResizeHeight(true)
+            list_box:SetCanResizeWidth(true)
 
-                        break
-                    end
-                end
+            list_view:Resize(cw, ch)
+            list_clip:Resize(cw, ch-50)
 
-                -- loop through all ingredients, check their amounts in the headtaking table
-                local ingredient_list = find_uicomponent(uic, "ingredient_list")
+            ModLog("floorp a dorp")
 
-                -- no head counts for nemesis heads!
-                if i ~= 1 then
-                    for j = 0, ingredient_list:ChildCount() -1 do
-                        -- skip the "template_ingredient" boi
-                        local child = UIComponent(ingredient_list:Find(j))
-                        local id = child:Id()
-                        if id ~= "template_ingredient" then
-    
-                            local num_label = core:get_or_create_component("num_heads", "ui/vandy_lib/number_label", child)
-                            num_label:SetStateText("0")
-                            num_label:SetTooltipText("Number of Heads", true)
-                            num_label:SetDockingPoint(3)
-                            num_label:SetDockOffset(5, -5)
-    
-                            num_label:SetCanResizeWidth(true) num_label:SetCanResizeHeight(true)
-                            num_label:Resize(num_label:Width() /2, num_label:Height() /2)
-                            num_label:SetCanResizeWidth(false) num_label:SetCanResizeHeight(false)
-    
-                            num_label:SetVisible(false)
-    
-                            local ingredient_key = string.gsub(id, "CcoCookingIngredientRecord", "")
+            list_view:SetCanResizeHeight(false)
+            list_view:SetCanResizeWidth(false)
+            
+            list_clip:SetCanResizeHeight(false)
+            list_clip:SetCanResizeWidth(false)
 
-                            local head_obj = self.heads[ingredient_key]
+            -- vslider:SetVisible(true)
+            list_view:SetVisible(true)
+            list_box:SetVisible(true)
 
-                            if head_obj then
-                                local num_heads = head_obj["num_heads"]
-                                if num_heads and is_number(num_heads) then -- only continue if this head is tracked in the heads data table
-                                    local slot_item = UIComponent(child:Find("slot_item"))
+            list_view:SetDockingPoint(2)
+            list_clip:SetDockingPoint(0)
+            list_box:SetDockingPoint(0)
 
-                                    num_label:SetStateText(tostring(num_heads))
-                                    num_label:SetVisible(true)
+            list_view:SetDockOffset(0, 0)
+            list_clip:SetDockOffset(0, 0)
+            list_box:SetDockOffset(0, 0)
 
-                                    if num_heads == 0 then
-                                        slot_item:SetState("inactive")
-                                        slot_item:SetCurrentStateImageOpacity(1, 100)
-                                    end
-                                end
-                            end
-                        end
-                    end
+            ModLog("shkorp")
+
+            local addresses = {}
+
+            ModLog("num children: "..tostring(category_list:ChildCount()))
+            for i = 0, category_list:ChildCount() -1 do
+                ModLog("loop "..tostring(i))
+                local child = UIComponent(category_list:Find(i))
+                ModLog("child gotten")
+                ModLog("is uic: "..tostring(is_uicomponent(child)))
+                ModLog("mah id: "..child:Id())
+                if child:Id() ~= "list_view" and child:Id() ~= "template_category" then
+                    addresses[#addresses+1] = child:Address()
+                    ModLog("not list view and not template cat")
                 end
             end
-        end
+
+            for i = 1, #addresses do
+                list_box:Adopt(addresses[i])
+            end
+
+            ModLog("farlg")
+
+            list_box:Layout()
+            vslider:SetVisible(true)
+
+            list_box:Resize(cw, ch+150)
+            list_box:SetCanResizeHeight(false)
+            list_box:SetCanResizeWidth(false)
+            
+            ModLog("awefawef")
+        
+    --     for i = 1, #categories do
+    --         ModLog("in loop ["..categories[i].."]")
+    --         local uic = find_uicomponent(category_list, categories[i])
+    --         if is_uicomponent(uic) then
+    --             local x,y = uic:Position()
+    --             pos_x = x
+
+    --             for j,pos_y in ipairs(pos) do
+    --                 --local pos_y = pos[j]
+    --                 if pos_y == 0 then
+    --                     pos[j] = y
+
+    --                     ModLog("pos_y is 0 in num ["..tostring(j).."]. new pos_y is ["..tostring(y))
+
+    --                     break
+    --                 end
+
+    --                 if y < pos_y then
+
+    --                     ModLog("pos_y ["..tostring(pos_y).."] is more than uic_y in num ["..tostring(j).."]. new pos_y is ["..tostring(y))
+    --                     pos[j] = y
+    --                     if j ~= 4 then
+    --                         ModLog("pushing pos_y ["..tostring(pos_y).."] to next index, ["..tostring(j+1).."]")
+    --                         if pos[j+1] == 0 then
+    --                             pos[j+1] = pos_y
+    --                         else
+    --                             -- TODO BAD CODE UGLY BAD BAD BAD BAD (written at midnight pls forgive me, future me)
+    --                             local old_y = pos[j+1]
+    --                             if pos[j+2] == 0 then
+    --                                 pos[j+2] = old_y
+    --                                 pos[j+1] = pos_y
+    --                             else
+    --                                 local oldest_y = pos[j+2]
+    --                                 if pos[j+3] == 0 then
+    --                                     pos[j+1] = pos_y
+    --                                     pos[j+2] = old_y
+    --                                     pos[j+3] = oldest_y
+    --                                 end
+    --                             end
+    --                         end
+    --                     end
+
+    --                     break
+    --                 end
+    --             end
+
+    --             -- loop through all ingredients, check their amounts in the headtaking table
+    --             local ingredient_list = find_uicomponent(uic, "ingredient_list")
+
+    --             -- no head counts for nemesis heads!
+    --             if i ~= 1 then
+    --                 for j = 0, ingredient_list:ChildCount() -1 do
+    --                     -- skip the "template_ingredient" boi
+    --                     local child = UIComponent(ingredient_list:Find(j))
+    --                     local id = child:Id()
+    --                     if id ~= "template_ingredient" then
+    
+    --                         local num_label = core:get_or_create_component("num_heads", "ui/vandy_lib/number_label", child)
+    --                         num_label:SetStateText("0")
+    --                         num_label:SetTooltipText("Number of Heads", true)
+    --                         num_label:SetDockingPoint(3)
+    --                         num_label:SetDockOffset(5, -5)
+    
+    --                         num_label:SetCanResizeWidth(true) num_label:SetCanResizeHeight(true)
+    --                         num_label:Resize(num_label:Width() /2, num_label:Height() /2)
+    --                         num_label:SetCanResizeWidth(false) num_label:SetCanResizeHeight(false)
+    
+    --                         num_label:SetVisible(false)
+    
+    --                         local ingredient_key = string.gsub(id, "CcoCookingIngredientRecord", "")
+
+    --                         local head_obj = self.heads[ingredient_key]
+
+    --                         if head_obj then
+    --                             local num_heads = head_obj["num_heads"]
+    --                             if num_heads and is_number(num_heads) then -- only continue if this head is tracked in the heads data table
+    --                                 local slot_item = UIComponent(child:Find("slot_item"))
+
+    --                                 num_label:SetStateText(tostring(num_heads))
+    --                                 num_label:SetVisible(true)
+
+    --                                 if num_heads == 0 then
+    --                                     slot_item:SetState("inactive")
+    --                                     slot_item:SetCurrentStateImageOpacity(1, 100)
+    --                                 end
+    --                             end
+    --                         end
+    --                     end
+    --                 end
+    --             end
+    --         end
+    --     end
 
     end) if not ok then ModLog(err) end
 
-        for i = 1, #categories do
-            local uic = find_uicomponent(category_list, categories[i])
-            if is_uicomponent(uic) then
-                local pos_y = pos[i]
-                ModLog("Moving "..tostring(i).." to ("..tostring(pos_x)..", "..tostring(pos_y)..").")
-                uic:MoveTo(pos_x, pos_y)
-            end
-        end
+    --     for i = 1, #categories do
+    --         local uic = find_uicomponent(category_list, categories[i])
+    --         if is_uicomponent(uic) then
+    --             local pos_y = pos[i]
+    --             ModLog("Moving "..tostring(i).." to ("..tostring(pos_x)..", "..tostring(pos_y)..").")
+    --             uic:MoveTo(pos_x, pos_y)
+    --         end
+    --     end
 
         --[[local adjusted_pos = {}
         for i = 1, #pos do
