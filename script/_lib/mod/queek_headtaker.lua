@@ -36,30 +36,33 @@ local headtaking = {
     faction_key = "wh2_main_skv_clan_mors",
 
     -- table matching subcultures to their head reward
-    valid_heads = {
-        wh_main_sc_chs_chaos = "generic_head_chaos",
-        wh_main_sc_dwf_dwarfs = "generic_head_dwarf",
-        wh_main_sc_emp_empire = "generic_head_empire",
-        wh_main_sc_grn_greenskins = "generic_head_greenskins",
-        wh_main_sc_nor_norsca = "generic_head_norsca",
-        wh_main_sc_vmp_vampire_counts = "generic_head_vampire_counts",
-        wh_dlc03_sc_bst_beastmen = "generic_head_beastmen",
-        wh2_main_sc_lzd_lizardmen = "generic_head_lizardmen",
-        wh2_main_sc_hef_high_elves = "generic_head_high_elf",
-        wh2_main_sc_def_dark_elves = "generic_head_dark_elf",
-        wh2_dlc11_sc_cst_vampire_coast = "generic_head_vampire_coast",
-        wh_dlc05_sc_wef_wood_elves = "generic_head_wood_elves",
-        wh_main_sc_brt_bretonnia = "generic_head_bretonnia",
-        wh2_main_sc_skv_skaven = "generic_head_skaven",
-        wh2_dlc09_sc_tmb_tomb_kings = "generic_head_tomb_kings",
+    valid_heads = require("script/headtaking/valid_heads"),
+    subculture_to_heads = {},
 
-        -- doubles
-        --[[
-            wh_main_sc_grn_savage_orcs = "generic_head_greenskins",
-            wh_main_sc_ksl_kislev = "generic_head_empire",
-            wh_main_sc_teb_teb = "generic_head_empire",
-        ]]
-    },
+    -- {
+    --     wh_main_sc_chs_chaos = "generic_head_chaos",
+    --     wh_main_sc_dwf_dwarfs = "generic_head_dwarf",
+    --     wh_main_sc_emp_empire = "generic_head_empire",
+    --     wh_main_sc_grn_greenskins = "generic_head_greenskins",
+    --     wh_main_sc_nor_norsca = "generic_head_norsca",
+    --     wh_main_sc_vmp_vampire_counts = "generic_head_vampire_counts",
+    --     wh_dlc03_sc_bst_beastmen = "generic_head_beastmen",
+    --     wh2_main_sc_lzd_lizardmen = "generic_head_lizardmen",
+    --     wh2_main_sc_hef_high_elves = "generic_head_high_elf",
+    --     wh2_main_sc_def_dark_elves = "generic_head_dark_elf",
+    --     wh2_dlc11_sc_cst_vampire_coast = "generic_head_vampire_coast",
+    --     wh_dlc05_sc_wef_wood_elves = "generic_head_wood_elves",
+    --     wh_main_sc_brt_bretonnia = "generic_head_bretonnia",
+    --     wh2_main_sc_skv_skaven = "generic_head_skaven",
+    --     wh2_dlc09_sc_tmb_tomb_kings = "generic_head_tomb_kings",
+
+    --     -- doubles
+    --     --[[
+    --         wh_main_sc_grn_savage_orcs = "generic_head_greenskins",
+    --         wh_main_sc_ksl_kislev = "generic_head_empire",
+    --         wh_main_sc_teb_teb = "generic_head_empire",
+    --     ]]
+    -- },
 
     special_heads = {
         dlc06_dwf_belegar = "legendary_head_belegar",
@@ -244,6 +247,24 @@ Skarsnik
 
 ]]
 
+function headtaking:get_head_for_subculture(sc_key)
+    if not is_string(sc_key) then
+        -- errmsg
+        return false
+    end
+
+    local sc_table = self.subculture_to_heads[sc_key]
+    if not is_table(sc_table) then
+        -- errmsg
+        return false
+    end
+
+    local max = #sc_table
+    local ran = cm:random_number(max, 1)
+
+    return sc_table[ran]
+end
+
 function headtaking:add_head(character_obj, queek_obj)
     local faction_obj = cm:get_faction(self.faction_key)
     local head_key = ""
@@ -282,7 +303,7 @@ function headtaking:add_head(character_obj, queek_obj)
         --head_key = special_heads[subtype_key]
         return false
     else
-        head_key = self.valid_heads[subculture_key]
+        head_key = self:get_head_for_subculture(subculture_key)
     end
 
     -- no head found for this subculture
@@ -470,6 +491,24 @@ function headtaking:init_count_heads()
     self.current_heads = num
 end
 
+
+function headtaking:init_valid_heads()
+    local valid_heads = self.valid_heads
+
+    for head_key, validity_table in pairs(valid_heads) do
+        local sc_key = validity_table.subculture
+        if is_string(sc_key) then
+            local sc_table = self.subculture_to_heads[sc_key]
+            if not sc_table then
+                self.subculture_to_heads[sc_key] = {}
+                sc_table = self.subculture_to_heads[sc_key]
+            end
+
+            sc_table[#sc_table+1] = head_key
+        end
+    end
+end
+
 -- initialize the mod stuff!
 function headtaking:init()
     local faction_obj = cm:get_faction(self.faction_key)
@@ -479,12 +518,14 @@ function headtaking:init()
         return false
     end
 
+    self:init_valid_heads()
+
     -- set up the self.heads table - it tracks the number of heads available, or if a head is locked
     if cm:is_new_game() or self.heads == {} then
         ModLog("setting up fresh heads")
 
         local faction_cooking_info = cm:model():world():cooking_system():faction_cooking_info(faction_obj)
-        for _, key in pairs(self.valid_heads) do
+        for key, _ in pairs(self.valid_heads) do
 
             self.heads[key] = {
                 num_heads = 0,
