@@ -26,6 +26,10 @@ local headtaking = {
     legendary_heads_num = 0,
 
     squeak_stage = 0,
+    squeak_mission_info = {
+        num_missions = 0,
+        current_mission = "",
+    },
 
     chance = 100,
     queek_subtype = "wh2_main_skv_queek_headtaker",
@@ -328,7 +332,19 @@ function headtaking:loyalty_listeners(disable)
     )
 end
 
-function headtaking:squeak_init()
+function headtaking:squeak_random_shit()
+
+end
+
+function headtaking:squeak_upgrade(new_level)
+
+end
+
+function headtaking:squeak_init(new_stage)
+    if is_number(new_stage) then
+        self.squeak_stage = new_stage
+    end
+
     ModLog("Squeak init!")
     local stage = self.squeak_stage
     ModLog("Stage is "..tostring(stage))
@@ -373,15 +389,45 @@ function headtaking:squeak_init()
                 end
 
                 -- add Squeak
-                -- trigger incident
+                local faction = cm:get_faction(self.faction_key)
+                local queek = faction:faction_leader()
+                cm:force_add_ancillary(
+                    queek,
+                    "squeak_stage_1",
+                    true,
+                    false
+                )
+
+                -- trigger incident for "hey, you got this fucker"
+
                 -- set stage to next
+                self:squeak_init(1)
+
+                core:remove_listener("AddSqueakPls")
             end,
             true
         )
     elseif stage == 1 then
+        -- Squeak acquired, and begins asking for inane shit
+        self:squeak_random_shit()
 
-    else
+        -- after a mission or two, go up
+    elseif stage == 2 then
+        -- Squeak informs about Legendary Heads (name pending!), and continues asking for inane shit
+        self:squeak_random_shit()
 
+        -- add in missions for each LL here
+    elseif stage == 3 then
+        -- Squeak upgrades 
+        -- Squeak asks of you to conquer K8P finally and settle down, papa
+        self:squeak_random_shit()
+
+        -- add in mission to reconquista K8P
+    elseif stage == 4 then
+        -- After K8P conquer, Squeak demands of wildly wild shit
+        self:squeak_random_shit()
+
+        -- eventually, Squeak gets caught speaking to Queek's heads secretly, resulting in his fucking death, fuck that guy.
     end
 end
 
@@ -967,6 +1013,7 @@ cm:add_loading_game_callback(
         headtaking.heads = cm:load_named_value("headtaking_heads", headtaking.heads, context)
         headtaking.total_heads = cm:load_named_value("headtaking_total_heads", headtaking.total_heads, context)
         headtaking.squeak_stage = cm:load_named_value("headtaking_squeak_stage", headtaking.squeak_stage, context)
+        headtaking.squeak_mission_info = cm:load_named_value("headtaking_squeak_mission_info", headtaking.squeak_mission_info, context)
     end
 )
 
@@ -975,5 +1022,6 @@ cm:add_saving_game_callback(
         cm:save_named_value("headtaking_heads", headtaking.heads, context)
         cm:save_named_value("headtaking_total_heads", headtaking.total_heads, context)
         cm:save_named_value("headtaking_squeak_stage", headtaking.squeak_stage, context)
+        cm:save_named_value("headtaking_squeak_mission_info", headtaking.squeak_mission_info, context)
     end
 )
