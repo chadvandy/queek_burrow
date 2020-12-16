@@ -866,6 +866,7 @@ function headtaking:ui_init()
         local lclip = find_uicomponent(lview, "list_clip")
         local lbox = find_uicomponent(lclip, "list_box")]]
         local x,y = effect_list:GetDockOffset()
+        local p = effect_list:DockingPoint()
         --local px, py = core:get_screen_resolution()
         local fx = x --(px * 0.67) + x
 
@@ -874,10 +875,15 @@ function headtaking:ui_init()
         effect_list:Resize(effect_list:Width(), effect_list:Height() *1.45)
         effect_list:SetCanResizeHeight(false)
         
-        -- double made for no reason --TODO make it for a reason?
         local tt = find_uicomponent("queek_cauldron", "left_colum", "ingredients_holder", "component_tooltip2")
-        --tt:SetVisible(false)
-        remove_component(tt)
+        tt:SetDockingPoint(p)
+        tt:SetDockOffset(fx + tt:Width(), y * 1.25)
+        tt:SetCanResizeHeight(true)
+        tt:Resize(tt:Width(), tt:Height() *1.45)
+        tt:SetCanResizeHeight(false)
+
+        -- --tt:SetVisible(false)
+        -- remove_component(tt)
 
         -- change the text on Collected Heads / Collected Legendary Heads
         local heads_num = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "ingredients_progress_holder", "ingredients_progress_number")
