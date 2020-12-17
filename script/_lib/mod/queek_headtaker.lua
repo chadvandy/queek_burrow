@@ -882,7 +882,8 @@ function headtaking:ui_init()
         tt:Resize(tt:Width(), tt:Height() *1.45)
         tt:SetCanResizeHeight(false)
 
-        -- --tt:SetVisible(false)
+        -- hide for now :(
+        tt:SetVisible(false)
         -- remove_component(tt)
 
         -- change the text on Collected Heads / Collected Legendary Heads
