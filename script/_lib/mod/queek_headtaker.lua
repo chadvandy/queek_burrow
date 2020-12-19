@@ -15,18 +15,14 @@ local headtaking = {
     -- count the current total number of heads
     current_heads = 0,
 
-    -- add to this whenever a new legendary head is crafted
-    legendary_heads = {
-        "belegar",
-        "skarsnik",
-        "tretch",
-    },
+
 
     legendary_heads_max = 0,
     legendary_heads_num = 0,
 
     squeak_stage = 0,
     squeak_mission_info = {
+        turns_since_last_mission = -1,
         num_missions = 0,
         current_mission = "",
     },
@@ -37,105 +33,15 @@ local headtaking = {
 
     -- table matching subcultures to their head reward
     valid_heads = require("script/headtaking/valid_heads"),
+    legendary_heads = require("script/headtaking/legendary_heads"),
     subculture_to_heads = {},
-
-    -- {
-    --     wh_main_sc_chs_chaos = "generic_head_chaos",
-    --     wh_main_sc_dwf_dwarfs = "generic_head_dwarf",
-    --     wh_main_sc_emp_empire = "generic_head_empire",
-    --     wh_main_sc_grn_greenskins = "generic_head_greenskins",
-    --     wh_main_sc_nor_norsca = "generic_head_norsca",
-    --     wh_main_sc_vmp_vampire_counts = "generic_head_vampire_counts",
-    --     wh_dlc03_sc_bst_beastmen = "generic_head_beastmen",
-    --     wh2_main_sc_lzd_lizardmen = "generic_head_lizardmen",
-    --     wh2_main_sc_hef_high_elves = "generic_head_high_elf",
-    --     wh2_main_sc_def_dark_elves = "generic_head_dark_elf",
-    --     wh2_dlc11_sc_cst_vampire_coast = "generic_head_vampire_coast",
-    --     wh_dlc05_sc_wef_wood_elves = "generic_head_wood_elves",
-    --     wh_main_sc_brt_bretonnia = "generic_head_bretonnia",
-    --     wh2_main_sc_skv_skaven = "generic_head_skaven",
-    --     wh2_dlc09_sc_tmb_tomb_kings = "generic_head_tomb_kings",
-
-    --     -- doubles
-    --     --[[
-    --         wh_main_sc_grn_savage_orcs = "generic_head_greenskins",
-    --         wh_main_sc_ksl_kislev = "generic_head_empire",
-    --         wh_main_sc_teb_teb = "generic_head_empire",
-    --     ]]
-    -- },
+    subtype_to_heads = {},
 
     special_heads = {
         dlc06_dwf_belegar = "legendary_head_belegar",
         dlc06_grn_skarsnik = "legendary_head_skarsnik",
     },
 }
-
--- straight up stolen from wh2_campaign_traits.lua, prevent LL's from being killed unless they're Skarsnik or Belegar
-local excluded_legendary_lords = {
-	["emp_karl_franz"] =						true, 					-- Karl Franz
-	["emp_balthasar_gelt"] =					true,				-- Balthasar Gelt
-	["dlc04_emp_volkmar"] =						true, 			-- Volkmar the Grim
-	["dwf_thorgrim_grudgebearer"] =				true, 		-- Thorgrim Grudgebearer
-	["dwf_ungrim_ironfist"] =					true, 				-- Ungrim Ironfist
-	["pro01_dwf_grombrindal"] = 				true, 					-- Grombrindal
-	--["dlc06_dwf_belegar"] =						"wh2_main_trait_defeated_belegar_ironhammer", 			-- Belegar Ironhammer
-	["dlc05_wef_orion"] =						true, 						-- Orion
-	["dlc05_wef_durthu"] =						true, 						-- Durthu
-	["grn_grimgor_ironhide"] =					true, 			-- Grimgor Ironhide
-	["grn_azhag_the_slaughterer"] =				true, 		-- Azhag the Slaughterer
-	--["dlc06_grn_skarsnik"] =					"wh2_main_trait_defeated_skarsnik", 					-- Skarsnik
-	["dlc06_grn_wurrzag_da_great_prophet"] =	true, 						-- Wurrzag
-	["vmp_mannfred_von_carstein"] =				true, 		-- Mannfred von Carstein
-	["vmp_heinrich_kemmler"] =					true, 			-- Heinrich Kemmler
-	["dlc04_vmp_vlad_con_carstein"] =			true, 			-- Vlad von Carstein
-	["dlc04_vmp_helman_ghorst"] =				true, 				-- Helman Ghorst
-	["pro02_vmp_isabella_von_carstein"] =		true, 		-- Isabella von Carstein
-	["chs_archaon"] =							true, 		-- Archaon the Everchosen
-	["chs_kholek_suneater"] =					true, 				-- Kholek Suneater
-	["chs_prince_sigvald"] =					true, 				-- Prince Sigvald
-	["dlc03_bst_khazrak"] =						true, 				-- Khazrak One-Eye
-	["dlc03_bst_malagor"] =						true, 		-- Malagor the Dark Omen
-	["dlc05_bst_morghur"] =						true, 		-- Morghur the Shadowgave
-	["brt_louen_leoncouer"] =					true, 				-- Louen Leoncouer
-	["dlc07_brt_fay_enchantress"] =				true, 				-- Fay Enchantress
-	["dlc07_brt_alberic"] =						true, 		-- Alberic de Bordeleaux
-	["wh_dlc08_nor_wulfrik"] =					true,						-- Wulfrik the Wanderer
-	["wh_dlc08_nor_throgg"] =					true,						-- Throgg
-	["wh2_main_hef_tyrion"] =					true, 						-- Tyrion
-	["wh2_main_hef_teclis"] =					true, 						-- Teclis
-	["wh2_main_lzd_lord_mazdamundi"] =			true, 				-- Lord Mazdamundi
-	["wh2_main_lzd_kroq_gar"] =					true, 					-- Kroq-Gar
-	["wh2_main_def_malekith"] =					true, 					-- Malekith
-	["wh2_main_def_morathi"] =					true, 						-- Morathi
-	["wh2_main_skv_queek_headtaker"] =			true, 				-- Queen Headtaker
-	["wh2_main_skv_lord_skrolk"] =				true, 					-- Lord Skrolk
-	["wh2_dlc09_skv_tretch_craventail"] =		true,						-- Tretch Craventail
-	["wh2_dlc09_tmb_settra"] =					true,						-- Settra the Imperishable
-	["wh2_dlc09_tmb_arkhan"] =					true,						-- Arkhan the Black
-	["wh2_dlc09_tmb_khalida"] =					true,						-- High Queen Khalida
-	["wh2_dlc09_tmb_khatep"] =					true,						-- Grand Hierophant Khatep
-	["wh2_dlc10_hef_alarielle"] =				true,					-- Alarielle the Radiant
-	["wh2_dlc10_hef_alith_anar"] =				true,					-- Alith Anar
-	["wh2_dlc10_def_crone_hellebron"] =			true,					-- Crone Hellebron
-	["wh2_dlc11_cst_harkon"] =					true,				-- Luthor Harkon
-	["wh2_dlc11_cst_noctilus"] =				true,				-- Count Noctilus
-	["wh2_dlc11_cst_aranessa"] =				true,			-- Aranessa Saltspite
-	["wh2_dlc11_cst_cylostra"] =				true,			-- Cylostra Direfin
-	["wh2_dlc11_def_lokhir"] =					true,			-- Lokhir Fellheart
-	["wh2_dlc12_lzd_tehenhauin"] =				true,					-- Tehenhauin
-	["wh2_dlc12_skv_ikit_claw"] =				true,					-- Ikit Claw
-	["wh2_dlc12_lzd_tiktaqto"] =				true,					-- Tiktaq'to
-	["wh2_dlc13_emp_cha_markus_wulfhart_0"] = 	true,					-- Markus Wulfhart
-	["wh2_dlc13_lzd_nakai"] = 					true,						-- Nakai
-	["wh2_dlc13_lzd_gor_rok"] = 				true,						-- Gor-Rok
-	["wh2_dlc14_brt_repanse"] = 				true,						-- Repanse de Lyonese
-	["wh2_dlc14_def_malus_darkblade"] =			true,						-- Malus Darkblade
-	["wh2_dlc14_skv_deathmaster_snikch"] =		true,						-- Deathmaster Snikch
-	["wh2_pro08_neu_gotrek"] =					true,						-- Gotrek
-	["wh2_dlc15_hef_imrik"] = 					true,						-- Imrik
-	["wh2_dlc15_hef_eltharion"] = 				true,					-- Eltharion the Grim
-	["wh2_dlc15_grn_grom_the_paunch"] = 		true							-- Grom the Paunch
-};
 
 local queek_subtype = "wh2_main_skv_queek_headtaker"
 
@@ -265,6 +171,43 @@ function headtaking:get_head_for_subculture(sc_key)
     return sc_table[ran]
 end
 
+
+function headtaking:get_valid_head_for_character(subculture_key, subtype_key)
+    if not is_string(subculture_key) or not is_string(subtype_key) then
+        -- errmsg
+        return false
+    end
+
+    local valid_heads = {}
+    local sc_table = self.subculture_to_heads[subculture_key]
+    local st_table = self.subtype_to_heads[subtype_key]
+
+    if is_table(sc_table) then
+        for i = 1, #sc_table do
+            local head = sc_table[i]
+            valid_heads[#valid_heads+1] = head
+        end
+    end
+
+    if is_table(st_table) then
+        for i = 1, #st_table do
+            local head = st_table[i]
+            valid_heads[#valid_heads+1] = head
+        end
+    end
+
+    local max = #valid_heads
+
+    if max == 0 then
+        -- issue, a head wasn't constructed; what do?
+        return ""
+    end
+
+    -- randomly select a head from the table
+    local ran_num = cm:random_number(max, 1)
+    return valid_heads[ran_num]
+end
+
 function headtaking:add_head(character_obj, queek_obj)
     local faction_obj = cm:get_faction(self.faction_key)
     local head_key = ""
@@ -295,18 +238,9 @@ function headtaking:add_head(character_obj, queek_obj)
         turn_number = turn_number,
     }
 
-    -- local str = string.format("Queek killed an enemy of faction %s with name %s %s, with subtype %s. Their flag is %s. Their level was %d. They were located in the region %s, and killed on turn number %d.", faction_key, forename, surname, subtype, flag_path, level, region_key, turn_number)
+    head_key = self:get_valid_head_for_character(subculture_key, subtype_key)
 
-    -- check if it was a special head first
-    if self.special_heads[subtype_key] ~= nil then
-        -- TODO disabling for now, no legendary heads!
-        --head_key = special_heads[subtype_key]
-        return false
-    else
-        head_key = self:get_head_for_subculture(subculture_key)
-    end
-
-    -- no head found for this subculture
+    -- no head found for this char
     if head_key == "" then
         return false
     end
@@ -353,12 +287,42 @@ function headtaking:loyalty_listeners(disable)
     )
 end
 
+-- this is where Squeak's random incessant requests are generated
 function headtaking:squeak_random_shit()
-
+    local possible_missions = {
+        
+    }
 end
 
-function headtaking:squeak_upgrade(new_level)
+-- this tracks the current LL missions (initialized through Squeak Init if it's over stage 1)
+function headtaking:track_legendary_heads()
+    
+end
 
+-- this is called when Squeak is propa upgraded
+-- only triggered once per level, obvo
+function headtaking:squeak_upgrade(new_level)
+    local faction = cm:get_faction(self.faction_key)
+    local queek = faction:faction_leader()
+
+    if new_level > 1 then
+        -- remove the old fuck
+        cm:force_remove_ancillary(
+            queek,
+            "squeak_stage_"..tostring(new_level - 1),
+            false,
+            true
+        )
+    end
+
+    cm:force_add_ancillary(
+        queek,
+        "squeak_stage_"..tostring(new_level),
+        true,
+        false
+    )
+
+    -- trigger incident for "hey, you got this fucker" / upgrade
 end
 
 function headtaking:squeak_init(new_stage)
@@ -410,16 +374,7 @@ function headtaking:squeak_init(new_stage)
                 end
 
                 -- add Squeak
-                local faction = cm:get_faction(self.faction_key)
-                local queek = faction:faction_leader()
-                cm:force_add_ancillary(
-                    queek,
-                    "squeak_stage_1",
-                    true,
-                    false
-                )
-
-                -- trigger incident for "hey, you got this fucker"
+                self:squeak_upgrade(1)
 
                 -- set stage to next
                 self:squeak_init(1)
@@ -433,6 +388,7 @@ function headtaking:squeak_init(new_stage)
         self:squeak_random_shit()
 
         -- after a mission or two, go up
+
     elseif stage == 2 then
         -- Squeak informs about Legendary Heads (name pending!), and continues asking for inane shit
         self:squeak_random_shit()
@@ -464,9 +420,8 @@ function headtaking:init_count_heads()
 
     for i = 1, #legendary_heads do
         local key = legendary_heads[i]
-        local str = "legendary_head_"..key
 
-        if faction_cooking_info:is_ingredient_unlocked(str) then
+        if faction_cooking_info:is_ingredient_unlocked(key) then
             self.legendary_heads_num = self.legendary_heads_num + 1
         end
     end
@@ -496,15 +451,41 @@ function headtaking:init_valid_heads()
     local valid_heads = self.valid_heads
 
     for head_key, validity_table in pairs(valid_heads) do
-        local sc_key = validity_table.subculture
-        if is_string(sc_key) then
-            local sc_table = self.subculture_to_heads[sc_key]
-            if not sc_table then
-                self.subculture_to_heads[sc_key] = {}
-                sc_table = self.subculture_to_heads[sc_key]
-            end
+        local valid_subcultures = validity_table.subculture
+        local valid_subtypes = validity_table.subtype
 
-            sc_table[#sc_table+1] = head_key
+        if is_string(valid_subcultures) then
+            valid_subcultures = {valid_subcultures}
+        end
+
+        if is_string(valid_subtypes) then
+            valid_subtypes = {valid_subtypes}
+        end
+
+        if is_table(valid_subcultures) then
+            for i = 1, #valid_subcultures do
+                local sc_key = valid_subcultures[i]
+
+                if not self.subculture_to_heads[sc_key] then
+                    self.subculture_to_heads[sc_key] = {}
+                end
+
+                local internal_table = self.subculture_to_heads[sc_key]
+                internal_table[#internal_table+1] = head_key
+            end
+        end
+
+        if is_table(valid_subtypes) then
+            for i = 1, #valid_subtypes do
+                local st_key = valid_subtypes[i]
+
+                if not self.subtype_to_heads[st_key] then
+                    self.subtype_to_heads[st_key] = {}
+                end
+
+                local internal_table = self.subtype_to_heads[st_key]
+                internal_table[#internal_table+1] = head_key
+            end
         end
     end
 end
@@ -561,9 +542,16 @@ function headtaking:init()
         "CharacterConvalescedOrKilled",
         function(context)
             local character = context:character()
-            --ModLog("char convalesced or killed'd")
+            local faction = character:faction()
 
-            return character:is_null_interface() == false and character:character_type("general") and character:has_military_force() --[[and not character:military_force():is_armed_citizenry()]] and cm:pending_battle_cache_char_is_involved(cm:get_faction(self.faction_key):faction_leader()) and character:faction():name() ~= self.faction_key and not character:faction():is_quest_battle_faction()
+            return 
+                character:is_null_interface() == false                      -- character that died actually exists
+                -- and character:character_type("general")                          -- temp disbabled -- generals only
+                and (character:has_military_force() or character:is_embedded_in_military_force() or character:has_garrison_residence()) -- needs to be in an army (leading, hero in it, or a garrison friend)
+                and cm:pending_battle_cache_char_is_involved(cm:get_faction(self.faction_key):faction_leader())     -- Queek was involved in the battle
+                and faction:name() ~= self.faction_key                  -- the character that died isn't in Clan Mors, lol
+                and not faction:is_quest_battle_faction()               -- not a QB faction
+                and not faction:name() == "wh2_main_skv_skaven_rebels"  -- not Skaven Rebels (prevent cheesing (: )
         end,
         function(context)
             ModLog("queek killed someone")
@@ -743,19 +731,21 @@ function headtaking:set_head_counters()
 
                 -- skip the default ingredient UIC, "template_ingredient"
                 if id ~= "template_ingredient" then
-
-                    -- create the number-of-heads label
-                    local num_label = core:get_or_create_component("num_heads", "ui/vandy_lib/number_label", ingredient)
-                    num_label:SetStateText("0")
-                    num_label:SetTooltipText("Number of Heads", true)
-                    num_label:SetDockingPoint(3)
-                    num_label:SetDockOffset(0, 0)
-    
-                    num_label:SetCanResizeWidth(true) num_label:SetCanResizeHeight(true)
-                    num_label:Resize(num_label:Width() /2, num_label:Height() /2)
-                    num_label:SetCanResizeWidth(false) num_label:SetCanResizeHeight(false)
-    
-                    num_label:SetVisible(false)
+                    local num_label = UIComponent(ingredient:Find("num_heads"))
+                    if not is_uicomponent(num_label) then
+                        -- create the number-of-heads label
+                        num_label = core:get_or_create_component("num_heads", "ui/vandy_lib/number_label", ingredient)
+                        num_label:SetStateText("0")
+                        num_label:SetTooltipText("Number of Heads", true)
+                        num_label:SetDockingPoint(3)
+                        num_label:SetDockOffset(0, 0)
+        
+                        num_label:SetCanResizeWidth(true) num_label:SetCanResizeHeight(true)
+                        num_label:Resize(num_label:Width() /2, num_label:Height() /2)
+                        num_label:SetCanResizeWidth(false) num_label:SetCanResizeHeight(false)
+        
+                        num_label:SetVisible(false)
+                    end
 
                     local ingredient_key = string.gsub(id, "CcoCookingIngredientRecord", "")
 
@@ -763,7 +753,7 @@ function headtaking:set_head_counters()
 
                     if head_obj then
                         local num_heads = head_obj["num_heads"]
-                        if num_heads and is_number(num_heads) and num_heads ~= -1 then -- only continue if this head is tracked in the heads data table
+                        if num_heads and is_number(num_heads) and num_heads ~= -1 then -- only continue if this head is tracked in the heads data table (and isn't locked!)
                             local slot_item = UIComponent(ingredient:Find("slot_item"))
 
                             num_label:SetStateText(tostring(num_heads))
@@ -973,11 +963,26 @@ function headtaking:ui_init()
             list_box:SetDockOffset(0, 0)
 
             local addresses = {}
+
+            -- the order in which the categories are displayed
+            local id_to_order = {
+                nemeses = 1,
+                underlings = 2,
+                beasts = 3,
+                human = 4,
+                elves = 5,
+                chaos = 6,
+                undead = 7,
+            }
             
             for i = 0, category_list:ChildCount() -1 do
                 local child = UIComponent(category_list:Find(i))
-                if child:Id() ~= "list_view" and child:Id() ~= "template_category" then
-                    addresses[#addresses+1] = child:Address()
+                local id = child:Id()
+                if id ~= "list_view" and id ~= "template_category" then
+                    local key = string.gsub(id, "CcoCookingIngredientGroupRecord", "")
+                    local ind = id_to_order[key]
+
+                    addresses[ind] = child:Address()
                 end
             end
 
