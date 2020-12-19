@@ -290,8 +290,16 @@ end
 -- this is where Squeak's random incessant requests are generated
 function headtaking:squeak_random_shit()
     local possible_missions = {
-        
+        -- capture nearby settlement
+        -- collect X heads
+        -- default X armies
+        -- recruit X units
+        -- earn X income
+        -- give X money (lose money after mission to pay Squeak)
+        -- earn x gold from raiding
     }
+
+    -- stage 4, demand Sword of Khaine
 end
 
 -- this tracks the current LL missions (initialized through Squeak Init if it's over stage 1)
@@ -395,7 +403,7 @@ function headtaking:squeak_init(new_stage)
 
         -- add in missions for each LL here
     elseif stage == 3 then
-        -- Squeak upgrades 
+        -- Squeak upgrades
         -- Squeak asks of you to conquer K8P finally and settle down, papa
         self:squeak_random_shit()
 
