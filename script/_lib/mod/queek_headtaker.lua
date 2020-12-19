@@ -290,8 +290,30 @@ function headtaking:squeak_random_shit()
 
 end
 
+-- this is called when Squeak is propa upgraded
+-- only triggered once per level, obvo
 function headtaking:squeak_upgrade(new_level)
+    local faction = cm:get_faction(self.faction_key)
+    local queek = faction:faction_leader()
 
+    if new_level > 1 then
+        -- remove the old fuck
+        cm:force_remove_ancillary(
+            queek,
+            "squeak_stage_"..tostring(new_level - 1),
+            false,
+            true
+        )
+    end
+
+    cm:force_add_ancillary(
+        queek,
+        "squeak_stage_"..tostring(new_level),
+        true,
+        false
+    )
+
+    -- trigger incident for "hey, you got this fucker" / upgrade
 end
 
 function headtaking:squeak_init(new_stage)
@@ -343,16 +365,7 @@ function headtaking:squeak_init(new_stage)
                 end
 
                 -- add Squeak
-                local faction = cm:get_faction(self.faction_key)
-                local queek = faction:faction_leader()
-                cm:force_add_ancillary(
-                    queek,
-                    "squeak_stage_1",
-                    true,
-                    false
-                )
-
-                -- trigger incident for "hey, you got this fucker"
+                self:squeak_upgrade(1)
 
                 -- set stage to next
                 self:squeak_init(1)
@@ -519,9 +532,16 @@ function headtaking:init()
         "CharacterConvalescedOrKilled",
         function(context)
             local character = context:character()
-            --ModLog("char convalesced or killed'd")
+            local faction = character:faction()
 
-            return character:is_null_interface() == false and character:character_type("general") and character:has_military_force() --[[and not character:military_force():is_armed_citizenry()]] and cm:pending_battle_cache_char_is_involved(cm:get_faction(self.faction_key):faction_leader()) and character:faction():name() ~= self.faction_key and not character:faction():is_quest_battle_faction()
+            return 
+                character:is_null_interface() == false                      -- character that died actually exists
+                -- and character:character_type("general")                          -- temp disbabled -- generals only
+                and (character:has_military_force() or character:is_embedded_in_military_force() or character:has_garrison_residence()) -- needs to be in an army (leading, hero in it, or a garrison friend)
+                and cm:pending_battle_cache_char_is_involved(cm:get_faction(self.faction_key):faction_leader())     -- Queek was involved in the battle
+                and faction:name() ~= self.faction_key                  -- the character that died isn't in Clan Mors, lol
+                and not faction:is_quest_battle_faction()               -- not a QB faction
+                and not faction:name() == "wh2_main_skv_skaven_rebels"  -- not Skaven Rebels (prevent cheesing (: )
         end,
         function(context)
             ModLog("queek killed someone")
