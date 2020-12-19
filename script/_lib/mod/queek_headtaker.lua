@@ -22,6 +22,7 @@ local headtaking = {
 
     squeak_stage = 0,
     squeak_mission_info = {
+        turns_since_last_mission = -1,
         num_missions = 0,
         current_mission = "",
     },
@@ -286,8 +287,16 @@ function headtaking:loyalty_listeners(disable)
     )
 end
 
+-- this is where Squeak's random incessant requests are generated
 function headtaking:squeak_random_shit()
+    local possible_missions = {
+        
+    }
+end
 
+-- this tracks the current LL missions (initialized through Squeak Init if it's over stage 1)
+function headtaking:track_legendary_heads()
+    
 end
 
 -- this is called when Squeak is propa upgraded
@@ -379,6 +388,7 @@ function headtaking:squeak_init(new_stage)
         self:squeak_random_shit()
 
         -- after a mission or two, go up
+
     elseif stage == 2 then
         -- Squeak informs about Legendary Heads (name pending!), and continues asking for inane shit
         self:squeak_random_shit()
@@ -721,19 +731,21 @@ function headtaking:set_head_counters()
 
                 -- skip the default ingredient UIC, "template_ingredient"
                 if id ~= "template_ingredient" then
-
-                    -- create the number-of-heads label
-                    local num_label = core:get_or_create_component("num_heads", "ui/vandy_lib/number_label", ingredient)
-                    num_label:SetStateText("0")
-                    num_label:SetTooltipText("Number of Heads", true)
-                    num_label:SetDockingPoint(3)
-                    num_label:SetDockOffset(0, 0)
-    
-                    num_label:SetCanResizeWidth(true) num_label:SetCanResizeHeight(true)
-                    num_label:Resize(num_label:Width() /2, num_label:Height() /2)
-                    num_label:SetCanResizeWidth(false) num_label:SetCanResizeHeight(false)
-    
-                    num_label:SetVisible(false)
+                    local num_label = UIComponent(ingredient:Find("num_heads"))
+                    if not is_uicomponent(num_label) then
+                        -- create the number-of-heads label
+                        num_label = core:get_or_create_component("num_heads", "ui/vandy_lib/number_label", ingredient)
+                        num_label:SetStateText("0")
+                        num_label:SetTooltipText("Number of Heads", true)
+                        num_label:SetDockingPoint(3)
+                        num_label:SetDockOffset(0, 0)
+        
+                        num_label:SetCanResizeWidth(true) num_label:SetCanResizeHeight(true)
+                        num_label:Resize(num_label:Width() /2, num_label:Height() /2)
+                        num_label:SetCanResizeWidth(false) num_label:SetCanResizeHeight(false)
+        
+                        num_label:SetVisible(false)
+                    end
 
                     local ingredient_key = string.gsub(id, "CcoCookingIngredientRecord", "")
 
@@ -741,7 +753,7 @@ function headtaking:set_head_counters()
 
                     if head_obj then
                         local num_heads = head_obj["num_heads"]
-                        if num_heads and is_number(num_heads) and num_heads ~= -1 then -- only continue if this head is tracked in the heads data table
+                        if num_heads and is_number(num_heads) and num_heads ~= -1 then -- only continue if this head is tracked in the heads data table (and isn't locked!)
                             local slot_item = UIComponent(ingredient:Find("slot_item"))
 
                             num_label:SetStateText(tostring(num_heads))
