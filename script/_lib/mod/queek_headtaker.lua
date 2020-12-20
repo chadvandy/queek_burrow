@@ -15,17 +15,17 @@ local headtaking = {
     -- count the current total number of heads
     current_heads = 0,
 
-
-
     legendary_heads_max = 0,
     legendary_heads_num = 0,
 
     squeak_stage = 0,
     squeak_mission_info = {
-        turns_since_last_mission = -1,
+        turns_since_last_mission = false,
         num_missions = 0,
         current_mission = "",
     },
+
+    squeak_missions = require("script/headtaking/squeak_missions"),
 
     chance = 100,
     queek_subtype = "wh2_main_skv_queek_headtaker",
@@ -287,19 +287,164 @@ function headtaking:loyalty_listeners(disable)
     )
 end
 
+function headtaking:get_mission_with_key(key)
+    if not is_string(key) then
+        -- errmsg
+        return false
+    end
+
+    local missions = self.squeak_missions
+    for i = 1, #missions do
+        local mission = missions[i]
+        if mission.key == key then
+            return mission
+        end
+    end
+
+    -- errmsg, none found! :(
+    return false
+end
+
+
 -- this is where Squeak's random incessant requests are generated
 function headtaking:squeak_random_shit()
-    local possible_missions = {
-        -- capture nearby settlement
-        -- collect X heads
-        -- default X armies
-        -- recruit X units
-        -- earn X income
-        -- give X money (lose money after mission to pay Squeak)
-        -- earn x gold from raiding
-    }
+    local stage = self.squeak_stage
+    -- first time Squeak is having a mission!
+    if self.squeak_mission_info.turns_since_last_mission == false then
+        local found_factions = {}
 
-    -- stage 4, demand Sword of Khaine
+        local queek_faction = cm:get_faction(self.faction_key)
+        local known_factions = queek_faction:factions_met()
+        for i = 0, known_factions:num_items() -1 do
+            local known_faction = known_factions:item_at(i)
+            if not queek_faction:at_war_with(known_faction) and not queek_faction:is_ally_vassal_or_client_state_of(known_faction) then
+                -- don't add allies or current enemies to this list
+                found_factions[#found_factions+1] = known_faction:name()
+            end
+        end
+
+        if #found_factions > 0 then
+            local mm = mission_manager:new(self.faction_key, "squeak_start")
+            mm:set_mission_issuer("squeak")
+            mm:add_new_objective("DECLARE_WAR")
+            local faction_key = found_factions[cm:random_number(#found_factions)]
+            mm:add_condition("faction "..faction_key)
+            mm:add_payload("money 500")
+
+            mm:trigger()
+
+            self.squeak_mission_info.turns_since_last_mission = cm:model():turn_number()
+            self.squeak_mission_info.current_mission = "squeak_start"
+        else
+            -- TODO trigger some backup mission?
+        end
+
+        return
+    end
+
+    -- if there's a mission already active, check if it's a scripted one and start the listener, else do naught
+    if self.squeak_mission_info.current_mission ~= "" then
+        local mission_data = self:get_mission_with_key(self.squeak_mission_info.current_mission)
+
+        -- start the listener for this mission, if there is one!
+        if mission_data and mission_data.listener then
+            mission_data.listener()
+        end
+
+        return
+    end
+
+    -- there's not a mission already and it's not the first mission; check if there should be a mission triggered
+    local this_turn = cm:model():turn_number()
+    local that_turn = self.squeak_mission_info.turns_since_last_mission
+    
+    local turns_since = this_turn - that_turn
+
+    local do_it = false
+
+    -- 20;40;60;80;100% chance every turn since last mission completed
+    if turns_since >= 5 then
+        do_it = true
+    else
+        local chance = 20 * turns_since
+
+        if cm:random_number(100) <= chance then
+            do_it = true
+        end
+    end
+
+    -- do it
+    if do_it then
+        local missions = self.squeak_missions
+
+        -- first 4 missions are valid for stage 1, and it goes up from there
+        local last_valid = 4
+        if stage == 2 then
+            last_valid = 4
+        elseif stage == 3 then
+            last_valid = 4
+        elseif stage == 4 then
+            last_valid = 4
+        end
+
+        -- pick a random mission from the list
+        local ran = cm:random_number(last_valid)
+
+        local mission = missions[ran]
+
+        if mission.constructor then mission = mission.constructor(self, mission) end
+
+        local objective = mission.objective
+
+        local mm = mission_manager:new(mission.key, self.faction_key)
+        mm:set_mission_issuer("squeak") -- TODO set this more dynamically, for the different versions
+        mm:add_new_objective(objective)
+
+        if is_string(mission.condition) then mission.condition = {mission.condition} end
+        for i = 1, #mission.condition do
+            -- this is the condition string; it comes as "total [500]" by default
+            -- this little constructor here changes up the value in the brackets, if valid, and concatenates it to the beginning. for instance, finding a region_key.
+            local str = mission.condition[i]
+
+            local condition = str
+
+            local x = string.find(str, "[%[]")
+            local y = string.find(str, "[%]]")
+
+            -- if there's some [%%%] string within, test it and change it; else, just apply the condition
+            if x and y then
+                local my_str = str:sub(x,y)
+                local condition_type = str:sub(1, x-2)
+
+                local condition_value = my_str:gsub("[%[%]]", "")
+                
+                if objective == "KILL_X_ENTITIES" then
+                    local val = tonumber(condition_value)
+                    local floor = val * 0.75
+                    local ceil = val * 2.25
+
+                    condition_value = tostring(cm:random_number(ceil, floor))
+                elseif objective == "OWN_N_UNITS" then
+                    local val = tonumber(condition_value)
+                    local floor = val * 0.8
+                    local ceil = val * 1.2
+
+                    condition_value = tostring(cm:random_number(ceil, floor))
+                end
+
+                condition = condition_type .. " " .. condition_value
+            end
+
+            mm:add_new_condition(condition)
+        end
+
+        mm:add_payload(mission.payload)
+
+        mm:trigger()
+
+        if mission.start_func then mission.start_func(self) end
+        if mission.listener then mission.listener() end
+    end
 end
 
 -- this tracks the current LL missions (initialized through Squeak Init if it's over stage 1)
@@ -341,6 +486,27 @@ function headtaking:squeak_init(new_stage)
     ModLog("Squeak init!")
     local stage = self.squeak_stage
     ModLog("Stage is "..tostring(stage))
+
+    if stage >= 1  then
+        -- check whenever a Squeak mish is completed
+        core:add_listener(
+            "QueekSqueakCompleaked",
+            "MissionSucceeded",
+            function(context)
+                return context:mission():mission_record_key():find("squeak") and context:faction():is_human() and context:faction():name() == self.faction_key
+            end,
+            function(context)
+                local completed_mission = context:mission():mission_record_key()
+
+                self.squeak_mission_info.current_mission = ""
+                self.squeak_mission_info.turns_since_last_mission = -1
+                self.squeak_mission_info.num_missions = self.squeak_mission_info.num_missions + 1
+
+                core:trigger_custom_event("HeadtakingSqueakMissionCompleted", {headtaking = self, mission=completed_mission, num_missions = self.squeak_mission_info.num_missions})
+            end,
+            true
+        )
+    end
 
     -- first stage, Squeak is unacquired - guarantee his aquisition the next head taken
     if stage == 0 then
@@ -396,7 +562,21 @@ function headtaking:squeak_init(new_stage)
         self:squeak_random_shit()
 
         -- after a mission or two, go up
+        core:add_listener(
+            "SqueakStage2",
+            "HeadtakingSqueakMissionCompleted",
+            function(context)
+                return context:num_missions() == 2
+            end,
+            function(context)
+                local completed_mission = context:mission()
 
+                self:squeak_upgrade(2)
+
+                self:squeak_init(2)
+            end,
+            false
+        )
     elseif stage == 2 then
         -- Squeak informs about Legendary Heads (name pending!), and continues asking for inane shit
         self:squeak_random_shit()
@@ -552,14 +732,24 @@ function headtaking:init()
             local character = context:character()
             local faction = character:faction()
 
+            ModLog("Character killed, checking stuff.")
+            ModLog("is null interface: "..tostring(character:is_null_interface()))
+            ModLog("has mf force:" .. tostring(character:has_military_force()))
+            ModLog("is embedded: "..tostring(character:is_embedded_in_military_force()))
+            ModLog("has garri: "..tostring(character:has_garrison_residence()))
+
+            ModLog("queek is in: "..tostring(cm:pending_battle_cache_char_is_involved(cm:get_faction(self.faction_key):faction_leader())))
+            ModLog("faction name: "..faction:name())
+            ModLog("is quest battle faction: "..tostring(faction:is_quest_battle_faction()))
+
             return 
                 character:is_null_interface() == false                      -- character that died actually exists
                 -- and character:character_type("general")                          -- temp disbabled -- generals only
                 and (character:has_military_force() or character:is_embedded_in_military_force() or character:has_garrison_residence()) -- needs to be in an army (leading, hero in it, or a garrison friend)
                 and cm:pending_battle_cache_char_is_involved(cm:get_faction(self.faction_key):faction_leader())     -- Queek was involved in the battle
                 and faction:name() ~= self.faction_key                  -- the character that died isn't in Clan Mors, lol
+                and faction:name() ~= "wh2_main_skv_skaven_rebels"  -- not Skaven Rebels (prevent cheesing (: )
                 and not faction:is_quest_battle_faction()               -- not a QB faction
-                and not faction:name() == "wh2_main_skv_skaven_rebels"  -- not Skaven Rebels (prevent cheesing (: )
         end,
         function(context)
             ModLog("queek killed someone")
