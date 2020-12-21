@@ -305,10 +305,87 @@ function headtaking:get_mission_with_key(key)
     return false
 end
 
+function headtaking:squeak_trigger_mission()
+    local missions = self.squeak_missions
+    local stage = self.squeak_stage
+
+    -- first 4 missions are valid for stage 1, and it goes up from there
+    local last_valid = 4
+    if stage == 2 then
+        last_valid = 4
+    elseif stage == 3 then
+        last_valid = 4
+    elseif stage == 4 then
+        last_valid = 4
+    end
+
+    -- pick a random mission from the list
+    local ran = cm:random_number(last_valid)
+
+    local mission = missions[ran]
+
+    if mission.constructor then mission = mission.constructor(self, mission) end
+
+    local objective = mission.objective
+
+    local mm = mission_manager:new(self.faction_key, mission.key)
+    mm:set_mission_issuer("squeak") -- TODO set this more dynamically, for the different versions
+    mm:add_new_objective(objective)
+
+    if is_string(mission.condition) then mission.condition = {mission.condition} end
+    for i = 1, #mission.condition do
+        -- this is the condition string; it comes as "total [500]" by default
+        -- this little constructor here changes up the value in the brackets, if valid, and concatenates it to the beginning. for instance, finding a region_key.
+        local str = mission.condition[i]
+
+        local condition = str
+
+        local x = string.find(str, "[%[]")
+        local y = string.find(str, "[%]]")
+
+        -- if there's some [%%%] string within, test it and change it; else, just apply the condition
+        if x and y then
+            local my_str = str:sub(x,y)
+            local condition_type = str:sub(1, x-2)
+
+            local condition_value = my_str:gsub("[%[%]]", "")
+            
+            if objective == "KILL_X_ENTITIES" then
+                local val = tonumber(condition_value)
+                local floor = val * 0.75
+                local ceil = val * 2.25
+
+                condition_value = tostring(cm:random_number(ceil, floor))
+            elseif objective == "OWN_N_UNITS" then
+                local val = tonumber(condition_value)
+                local floor = val * 0.8
+                local ceil = val * 1.2
+
+                condition_value = tostring(cm:random_number(ceil, floor))
+            end
+
+            condition = condition_type .. " " .. condition_value
+        end
+
+        mm:add_new_condition(condition)
+    end
+
+    mm:add_payload(mission.payload)
+
+    mm:trigger()
+
+    if mission.start_func then mission.start_func(self) end
+    if mission.listener then mission.listener() end
+end
+
+function headtaking:squeak_trigger_event()
+
+end
 
 -- this is where Squeak's random incessant requests are generated
 function headtaking:squeak_random_shit()
-    local stage = self.squeak_stage
+    -- local stage = self.squeak_stage
+    
     -- first time Squeak is having a mission!
     if self.squeak_mission_info.turns_since_last_mission == false then
         local found_factions = {}
@@ -354,102 +431,48 @@ function headtaking:squeak_random_shit()
         return
     end
 
-    -- there's not a mission already and it's not the first mission; check if there should be a mission triggered
-    local this_turn = cm:model():turn_number()
-    local that_turn = self.squeak_mission_info.turns_since_last_mission
+    core:add_listener(
+        "SqueakRandomEvent",
+        "FactionTurnStart",
+        function(context)
+            return context:faction():name() == self.faction_key
+        end,
+        function(context)
+            -- there's not a mission already and it's not the first mission; check if there should be a mission triggered
+            local this_turn = cm:model():turn_number()
+            local that_turn = self.squeak_mission_info.turns_since_last_mission
     
-    local turns_since = this_turn - that_turn
 
-    local do_it = false
+            local turns_since = this_turn - that_turn
 
-    -- 20;40;60;80;100% chance every turn since last mission completed
-    if turns_since >= 5 then
-        do_it = true
-    else
-        local chance = 20 * turns_since
-
-        if cm:random_number(100) <= chance then
-            do_it = true
-        end
-    end
-
-    -- do it
-    if do_it then
-        local missions = self.squeak_missions
-
-        -- first 4 missions are valid for stage 1, and it goes up from there
-        local last_valid = 4
-        if stage == 2 then
-            last_valid = 4
-        elseif stage == 3 then
-            last_valid = 4
-        elseif stage == 4 then
-            last_valid = 4
-        end
-
-        -- pick a random mission from the list
-        local ran = cm:random_number(last_valid)
-
-        local mission = missions[ran]
-
-        if mission.constructor then mission = mission.constructor(self, mission) end
-
-        local objective = mission.objective
-
-        local mm = mission_manager:new(mission.key, self.faction_key)
-        mm:set_mission_issuer("squeak") -- TODO set this more dynamically, for the different versions
-        mm:add_new_objective(objective)
-
-        if is_string(mission.condition) then mission.condition = {mission.condition} end
-        for i = 1, #mission.condition do
-            -- this is the condition string; it comes as "total [500]" by default
-            -- this little constructor here changes up the value in the brackets, if valid, and concatenates it to the beginning. for instance, finding a region_key.
-            local str = mission.condition[i]
-
-            local condition = str
-
-            local x = string.find(str, "[%[]")
-            local y = string.find(str, "[%]]")
-
-            -- if there's some [%%%] string within, test it and change it; else, just apply the condition
-            if x and y then
-                local my_str = str:sub(x,y)
-                local condition_type = str:sub(1, x-2)
-
-                local condition_value = my_str:gsub("[%[%]]", "")
-                
-                if objective == "KILL_X_ENTITIES" then
-                    local val = tonumber(condition_value)
-                    local floor = val * 0.75
-                    local ceil = val * 2.25
-
-                    condition_value = tostring(cm:random_number(ceil, floor))
-                elseif objective == "OWN_N_UNITS" then
-                    local val = tonumber(condition_value)
-                    local floor = val * 0.8
-                    local ceil = val * 1.2
-
-                    condition_value = tostring(cm:random_number(ceil, floor))
+            local do_it = false
+        
+            -- 20;40;60;80;100% chance every turn since last mission completed
+            if turns_since >= 5 then
+                do_it = true
+            else
+                local chance = 20 * turns_since
+        
+                if cm:random_number(100) <= chance then
+                    do_it = true
                 end
-
-                condition = condition_type .. " " .. condition_value
             end
 
-            mm:add_new_condition(condition)
-        end
-
-        mm:add_payload(mission.payload)
-
-        mm:trigger()
-
-        if mission.start_func then mission.start_func(self) end
-        if mission.listener then mission.listener() end
-    end
+            if do_it then
+                self:squeak_trigger_mission()
+            end
+        end,
+        true
+    )
 end
 
 -- this tracks the current LL missions (initialized through Squeak Init if it's over stage 1)
 function headtaking:track_legendary_heads()
     
+end
+
+function headtaking:legendary_head_init(head_key)
+
 end
 
 -- this is called when Squeak is propa upgraded
@@ -462,11 +485,13 @@ function headtaking:squeak_upgrade(new_level)
         -- remove the old fuck
         cm:force_remove_ancillary(
             queek,
-            "squeak_stage_"..tostring(new_level - 1),
+            "squeak_stage_"..tostring(self.squeak_stage),
             false,
             true
         )
     end
+
+    self.squeak_stage = new_level
 
     cm:force_add_ancillary(
         queek,
@@ -475,7 +500,13 @@ function headtaking:squeak_upgrade(new_level)
         false
     )
 
+    -- TODO vvvvv
     -- trigger incident for "hey, you got this fucker" / upgrade
+
+
+    self:squeak_init()
+
+    core:trigger_custom_event("HeadtakingSqueakUpgrade", {headtaking=self, stage=self.squeak_stage})
 end
 
 function headtaking:squeak_init(new_stage)
@@ -550,9 +581,6 @@ function headtaking:squeak_init(new_stage)
                 -- add Squeak
                 self:squeak_upgrade(1)
 
-                -- set stage to next
-                self:squeak_init(1)
-
                 core:remove_listener("AddSqueakPls")
             end,
             true
@@ -572,8 +600,6 @@ function headtaking:squeak_init(new_stage)
                 local completed_mission = context:mission()
 
                 self:squeak_upgrade(2)
-
-                self:squeak_init(2)
             end,
             false
         )
@@ -581,7 +607,7 @@ function headtaking:squeak_init(new_stage)
         -- Squeak informs about Legendary Heads (name pending!), and continues asking for inane shit
         self:squeak_random_shit()
 
-        -- add in missions for each LL here
+        -- LL missions are triggered by squeak_upgrade()'s internal listener
     elseif stage == 3 then
         -- Squeak upgrades
         -- Squeak asks of you to conquer K8P finally and settle down, papa
@@ -606,15 +632,29 @@ function headtaking:init_count_heads()
 
     local legendary_heads = self.legendary_heads
 
-    for i = 1, #legendary_heads do
-        local key = legendary_heads[i]
+    local total = 0
+    for key,legendary_obj in pairs(legendary_heads) do
+        total = total + 1
 
         if faction_cooking_info:is_ingredient_unlocked(key) then
             self.legendary_heads_num = self.legendary_heads_num + 1
+        else
+            local prereq = legendary_obj.prerequisite
+            if prereq then
+                core:add_listener(
+                    prereq.name,
+                    prereq.event_name,
+                    prereq.conditional,
+                    function(context)
+                        self:legendary_head_init(key)
+                    end,
+                    false
+                )
+            end
         end
     end
 
-    self.legendary_heads_max = #legendary_heads
+    self.legendary_heads_max = total
 
     -- grab the current number of heads for internal tracking
     local heads = self.heads
