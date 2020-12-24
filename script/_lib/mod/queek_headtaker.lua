@@ -9,6 +9,14 @@ local headtaking = {
     -- links head keys to the amount of hedz
     heads = {},
 
+    -- saves the current state of each slot - ordered 1-4 from left to right
+    slots = {
+        "locked",
+        "open",
+        "open",
+        "locked",
+    },
+
     -- count the total number of heads ever, including all current and all previously spent heads
     total_heads = 0,
 
@@ -25,6 +33,9 @@ local headtaking = {
         current_mission = "",
     },
 
+    -- saves the stages of each legendary head mission
+    legendary_mission_info = {},
+
     squeak_missions = require("script/headtaking/squeak_missions"),
 
     chance = 100,
@@ -33,19 +44,15 @@ local headtaking = {
 
     -- table matching subcultures to their head reward
     valid_heads = require("script/headtaking/valid_heads"),
-    legendary_heads = require("script/headtaking/legendary_heads"),
+
+    -- TODO, should it be indexed like this, or just read valid_heads in a slightly expensive loop? I'm okay with either, don't want to hold too much memory
+    -- built from valid_heads, makes a quick index'd table to pull valid heads based on subculture or subtype
     subculture_to_heads = {},
     subtype_to_heads = {},
 
-    special_heads = {
-        dlc06_dwf_belegar = "legendary_head_belegar",
-        dlc06_grn_skarsnik = "legendary_head_skarsnik",
-    },
+    -- table of legendary heads attached to their various related missions, ultra static
+    legendary_heads = require("script/headtaking/legendary_heads"),
 }
-
-local queek_subtype = "wh2_main_skv_queek_headtaker"
-
-
 
 function headtaking:add_head_with_key(head_key, details)
     if not is_string(head_key) then
@@ -468,11 +475,158 @@ end
 
 -- this tracks the current LL missions (initialized through Squeak Init if it's over stage 1)
 function headtaking:track_legendary_heads()
-    
+    local legendary_heads = self.legendary_heads
+    local legendary_mission_info = self.legendary_mission_info
+
+    -- check for completion of any legendary head missions
+    core:add_listener(
+        "LegendaryHeadMissionCompleted",
+        "MissionCompleted",
+        function(context)
+            return string.find(context:mission():mission_record_key(), "legendary_head_")
+        end,
+        function(context)
+            local mission = context:mission()
+            local mission_key = mission:mission_record_key()
+
+            local head_key = string.sub(mission_key, 1, -3)
+            local stage = tonumber(string.sub(mission_key, -1, -1))
+
+            local legendary_obj = self.legendary_heads[head_key]
+
+            local mission_chain = legendary_obj.mission_chain
+            local mission_obj = mission_chain[stage]
+
+            -- trigger any end-function if any are set
+            if mission_obj.end_func then
+                mission_obj.end_func(mission_obj)
+            end
+
+            -- reward the head if it's the last mission of this chain
+            if stage == #mission_chain then
+                -- TODO add details! (somehow???)
+                -- TODO permakill the lord
+                self:add_head_with_key(head_key)
+
+                core:trigger_custom_event("HeadtakingLegendaryHeadRetrieved", {headtaking=self, head_key=head_key})
+                return
+            end
+
+            -- trigger the next mission
+            local next_stage = stage+1
+            self:trigger_legendary_head_mission(head_key, next_stage)
+        end,
+        true
+    )
+
+    -- check stages of each legendary head - if it's stage 0, check the prereq; if it's beyond that, trigger any necessary listeners
+    for head_key,obj in pairs(legendary_heads) do
+
+        -- initalize the mission_info table if it hasn't been yet
+        if not legendary_mission_info[head_key] then legendary_mission_info[head_key] = {stage=0} end
+
+        local mission_info = legendary_mission_info[head_key]
+
+        -- if it's the pre-stage (0), then initialize the pre-requisite listener
+        if mission_info.stage == 0 then
+            -- the "prerequisite" field in script/headtaking/legendary_heads.lua
+            local prereq = obj.prerequisite
+
+            if prereq then
+                core:add_listener(
+                    prereq.name,
+                    prereq.event_name,
+                    prereq.conditional,
+                    function(context)
+                        -- trigger first stage (1)
+                        self:trigger_legendary_head_mission(head_key, 1)
+                    end,
+                    false
+                )
+            else
+                -- trigger first stage right away
+                self:trigger_legendary_head_mission(head_key, 1)
+            end
+        else
+            -- trigger any necessary listeners for this stage
+            local mission_chain = obj.mission_chain
+            local mission = mission_chain[mission_info.stage]
+
+            local listener = mission.listener
+
+            if listener then
+                core:add_listener(
+                    listener.name,
+                    listener.event_name,
+                    listener.conditional,
+                    listener.callback,
+                    listener.persistence or false
+                )
+            end
+        end
+    end
 end
 
-function headtaking:legendary_head_init(head_key)
+-- trigger individual missions in each legendary head chain
+-- if no stage is provided, it defaults to 1 to start it off
+function headtaking:trigger_legendary_head_mission(head_key, stage_num)
+    if not is_string(head_key) then
+        -- errmsg
+        return false
+    end
 
+    if not is_number(stage_num) then stage_num = 1 end
+
+    -- save the current stage in storage
+    self.legendary_mission_info[head_key].stage = stage_num
+
+    -- TODO pick a mission for this stage from a list
+
+    local legendary_obj = self.legendary_heads[head_key]
+    local mission_chain = legendary_obj.mission_chain
+    local mission_obj = mission_chain[stage_num]
+
+    if not mission_obj then
+        -- errmsg
+        return false
+    end
+
+    if is_function(mission_obj.constructor) then
+        mission_obj = mission_obj.constructor(mission_obj)
+
+        if not mission_obj then
+            -- construction failed, errmg
+            return false
+        end
+    end
+
+    local mission = mission_manager:new(self.faction_key, mission_obj.key)
+
+    mission:add_new_objective(mission_obj.objective)
+
+    if not is_table(mission_obj.condition) then mission_obj.condition = {mission_obj.condition} end
+    for i = 1, #mission_obj.condition do
+        local condition = mission_obj.condition[i]
+        mission:add_condition(condition)
+    end
+
+    mission:add_payload(mission_obj.payload)
+    mission:trigger()
+
+    if mission_obj.start_func then
+        mission_obj.start_func(mission_obj)
+    end
+
+    local listener = mission_obj.listener
+    if listener then
+        core:add_listener(
+            listener.name,
+            listener.event_name,
+            listener.conditional,
+            listener.callback,
+            false
+        )
+    end
 end
 
 -- this is called when Squeak is propa upgraded
@@ -597,7 +751,7 @@ function headtaking:squeak_init(new_stage)
                 return context:num_missions() == 2
             end,
             function(context)
-                local completed_mission = context:mission()
+                -- local completed_mission = context:mission()
 
                 self:squeak_upgrade(2)
             end,
@@ -633,24 +787,11 @@ function headtaking:init_count_heads()
     local legendary_heads = self.legendary_heads
 
     local total = 0
-    for key,legendary_obj in pairs(legendary_heads) do
+    for key,_ in pairs(legendary_heads) do
         total = total + 1
 
         if faction_cooking_info:is_ingredient_unlocked(key) then
             self.legendary_heads_num = self.legendary_heads_num + 1
-        else
-            local prereq = legendary_obj.prerequisite
-            if prereq then
-                core:add_listener(
-                    prereq.name,
-                    prereq.event_name,
-                    prereq.conditional,
-                    function(context)
-                        self:legendary_head_init(key)
-                    end,
-                    false
-                )
-            end
         end
     end
 
@@ -749,6 +890,7 @@ function headtaking:init()
         end
 
         -- TODO add details manually
+        -- TODO trigger incident with this
         self:add_head_with_key("generic_head_skaven")
 
         -- first thing's first, enable using 4 ingredients for a recipe for queeky
@@ -761,6 +903,7 @@ function headtaking:init()
 
     self:init_count_heads()
     self:squeak_init()
+    self:track_legendary_heads()
 
     --loyalty_listeners()
 
@@ -942,13 +1085,17 @@ end
 -- this is called to refresh things like num_heads and the Collected Heads counter and what not
 function headtaking:ui_refresh()
     if is_uicomponent(find_uicomponent("queek_cauldron")) then
+        local ok, err = pcall(function()
         self:set_head_counters()
+        end) if not ok then ModLog(err) end
     end
 end
 
 -- this sets the UI for the number of heads and their respective states and opacities
 function headtaking:set_head_counters()
     local category_list = find_uicomponent("queek_cauldron", "left_colum", "ingredients_holder", "ingredient_category_list")
+
+    ModLog("head 1")
 
     if not is_uicomponent(category_list) then
         -- errmsg
@@ -969,24 +1116,29 @@ function headtaking:set_head_counters()
 
                 -- skip the default ingredient UIC, "template_ingredient"
                 if id ~= "template_ingredient" then
-                    local num_label = UIComponent(ingredient:Find("num_heads"))
-                    if not is_uicomponent(num_label) then
+                    local num_label_address = ingredient:Find("num_heads")
+                    local num_label
+
+                    if not num_label_address then
                         -- create the number-of-heads label
                         num_label = core:get_or_create_component("num_heads", "ui/vandy_lib/number_label", ingredient)
-                        num_label:SetStateText("0")
-                        num_label:SetTooltipText("Number of Heads", true)
-                        num_label:SetDockingPoint(3)
-                        num_label:SetDockOffset(0, 0)
-        
-                        num_label:SetCanResizeWidth(true) num_label:SetCanResizeHeight(true)
-                        num_label:Resize(num_label:Width() /2, num_label:Height() /2)
-                        num_label:SetCanResizeWidth(false) num_label:SetCanResizeHeight(false)
-        
-                        num_label:SetVisible(false)
+                    else
+                        num_label = UIComponent(num_label_address)
                     end
 
-                    local ingredient_key = string.gsub(id, "CcoCookingIngredientRecord", "")
+                    num_label:SetStateText("0")
+                    num_label:SetTooltipText("Number of Heads", true)
+                    num_label:SetDockingPoint(3)
+                    num_label:SetDockOffset(0, 0)
+    
+                    num_label:SetCanResizeWidth(true) num_label:SetCanResizeHeight(true)
+                    num_label:Resize(num_label:Width() /2, num_label:Height() /2)
+                    num_label:SetCanResizeWidth(false) num_label:SetCanResizeHeight(false)
+    
+                    num_label:SetVisible(false)
+            
 
+                    local ingredient_key = string.gsub(id, "CcoCookingIngredientRecord", "")
                     local head_obj = self.heads[ingredient_key]
 
                     if head_obj then
@@ -1004,6 +1156,34 @@ function headtaking:set_head_counters()
                         end
                     end
                 end
+            end
+        else -- hide Nemesis heads if they're still locked, and include a template dummy if there's more hidden heads
+            -- TODO don't hide them if they're locked, hide them if the MISSION isn't started
+            local any_hidden = false
+            for j = 0, ingredient_list:ChildCount() -1 do
+                local ingredient = UIComponent(ingredient_list:Find(j))
+                local id = ingredient:Id()
+                local ingredient_key = string.gsub(id, "CcoCookingIngredientRecord", "")
+
+                local num_heads = self.heads[ingredient_key]["num_heads"]
+
+                if num_heads == -1 then
+                    -- this head is locked - hide it from the UI
+                    ingredient:SetVisible(false)
+                    any_hidden = true
+                else
+                    -- is anything needed here?
+                end
+            end
+
+            -- create a lil dummy ingredient!
+            if any_hidden then
+                local template = UIComponent(ingredient_list:Find("template_ingredient"))
+                local dummy = UIComponent(template:CopyComponent("nemesis_dummy"))
+                local slot_item = UIComponent(dummy:Find("slot_item"))
+
+                dummy:SetVisible(true)
+                -- set a tooltip and set a ??? image
             end
         end
     end
@@ -1122,6 +1302,15 @@ function headtaking:ui_init()
         local legendary_num = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "recipes_progress_holder", "recipes_progress_number")
         legendary_num:SetStateText(tostring(self.legendary_heads_num) .. " / " .. tostring(self.legendary_heads_max))
 
+        -- re-enable the recipe book, luh-mao
+        local recipe_book = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_button_group")
+        recipe_book:SetVisible(true)
+
+        -- hide specific recipe combos from the recipe book
+        local hidden_recipe = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_book", "recipes_and_tooltip_holder", "recipes_and_tooltip_holder_beholder", "recipes_holder", "recipes_list","CcoCookingRecipeRecordnemeses")
+
+        hidden_recipe:SetVisible(false)
+
         local slot_holder = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "ingredients_and_effects")
         local arch = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "arch")
 
@@ -1233,6 +1422,13 @@ function headtaking:ui_init()
             list_box:Layout()
             vslider:SetVisible(true)
 
+            do
+                vslider:SetDockingPoint(6)
+                
+                local x,y = vslider:GetDockOffset()
+                vslider:SetDockOffset(80,y)
+            end
+
             list_box:Resize(cw, ch+150)
             list_box:SetCanResizeHeight(false)
             list_box:SetCanResizeWidth(false)
@@ -1291,11 +1487,17 @@ core:add_static_object("headtaking", headtaking)
 
 cm:add_first_tick_callback(function()
     local ok, err = pcall(function()
-        headtaking:init() 
+        -- disable this whole thing if Queek is AI, for the time being
+        local queek = cm:get_faction(headtaking.faction_key)
+        if not queek:is_human() then
+            return
+        end
+
+        headtaking:init()
 
         if cm:get_local_faction_name(true) == headtaking.faction_key then
             headtaking:ui_init()
-        end 
+        end
     end) if not ok then ModLog(err) end
 end)
 
@@ -1305,6 +1507,7 @@ cm:add_loading_game_callback(
         headtaking.total_heads = cm:load_named_value("headtaking_total_heads", headtaking.total_heads, context)
         headtaking.squeak_stage = cm:load_named_value("headtaking_squeak_stage", headtaking.squeak_stage, context)
         headtaking.squeak_mission_info = cm:load_named_value("headtaking_squeak_mission_info", headtaking.squeak_mission_info, context)
+        headtaking.legendary_mission_info = cm:load_named_value("headtaking_legendary_mission_info", headtaking.legendary_mission_info, context)
     end
 )
 
@@ -1314,5 +1517,6 @@ cm:add_saving_game_callback(
         cm:save_named_value("headtaking_total_heads", headtaking.total_heads, context)
         cm:save_named_value("headtaking_squeak_stage", headtaking.squeak_stage, context)
         cm:save_named_value("headtaking_squeak_mission_info", headtaking.squeak_mission_info, context)
+        cm:save_named_value("headtaking_legendary_mission_info", headtaking.legendary_mission_info, context)
     end
 )
