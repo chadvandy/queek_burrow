@@ -8,14 +8,14 @@ return {
         {   -- raid their land
             key = "legendary_head_1_raid",
             objective = "SCRIPTED",
-            condition = {"script_key legendary_head_1_raid", "override_text legendary_head_1_raid"},
+            condition = {"script_key legendary_head_1_raid", "override_text mission_text_text_legendary_head_1_raid"},
             payload = "money 500",
             listener = function(headtaking, head_key)
                 local head_obj = headtaking.legendary_heads[head_key]
                 local faction_key = head_obj.faction_key
 
-                if not is_string(faction_key) then
-                    -- errmsg!
+                if not type(faction_key) == "string" then
+                    ModLog("there is no faction key")
                     return nil
                 end
 
@@ -47,14 +47,14 @@ return {
         {   -- raze one specified settlement TODO specify
             key = "legendary_head_1_raze",
             objective = "SCRIPTED",
-            condition = {"script_key legendary_head_1_raze", "override_text legendary_head_1_raze"},
+            condition = {"script_key legendary_head_1_raze", "override_text mission_text_text_legendary_head_1_raze"},
             payload = "money 500",
             listener = function(headtaking, head_key)
                 local head_obj = headtaking.legendary_heads[head_key]
                 local faction_key = head_obj.faction_key
 
-                if not is_string(faction_key) then
-                    -- errmsg!
+                if not type(faction_key) == "string" then
+                    ModLog("Not a string.")
                     return nil
                 end
 
@@ -91,13 +91,13 @@ return {
         {   -- get a trophy head from this faction
             key = "legendary_head_2_trophy",
             objective = "SCRIPTED",
-            condition = {"script_key legendary_head_2_trophy", "override_text legendary_head_2_trophy"},
+            condition = {"script_key legendary_head_2_trophy", "override_text mission_text_text_legendary_head_2_trophy"},
             payload = "money 2000",
             listener = function(headtaking, head_key)
                 local head_obj = headtaking.legendary_heads[head_key]
                 local faction_key = head_obj.faction_key
 
-                if not is_string(faction_key) then
+                if not type(faction_key) == "string" then
                     -- errmsg!
                     return nil
                 end
@@ -120,13 +120,13 @@ return {
         {   -- occupy three of their settlements
             key = "legendary_head_2_occupy",
             objective = "SCRIPTED",
-            condition = {"script_key legendary_head_2_occupy", "override_text legendary_head_2_occupy"},
+            condition = {"script_key legendary_head_2_occupy", "override_text mission_text_text_legendary_head_2_occupy"},
             payload = "money 2000",
             listener = function(headtaking, head_key)
                 local head_obj = headtaking.legendary_heads[head_key]
                 local faction_key = head_obj.faction_key
 
-                if not is_string(faction_key) then
+                if not type(faction_key) == "string" then
                     -- errmsg!
                     return nil
                 end
@@ -171,7 +171,7 @@ return {
                 local head_obj = headtaking.legendary_heads[head_key]
                 local faction_key = head_obj.faction_key
 
-                if not is_string(faction_key) then
+                if not type(faction_key) == "string" then
                     -- errmsg!
                     return nil
                 end
@@ -200,7 +200,7 @@ return {
                 local head_obj = headtaking.legendary_heads[head_key]
                 local faction_key = head_obj.faction_key
 
-                if not is_string(faction_key) then
+                if not type(faction_key) == "string" then
                     -- errmsg!
                     return nil
                 end

@@ -617,6 +617,8 @@ function headtaking:initialize_legendary_head_listener(mission_obj, head_key)
 end
 
 function headtaking:construct_mission_from_data(data, head_key, stage_num)
+    ModLog("Constructing mission from data, for head ["..head_key.."] during stage ["..tostring(stage_num).."].")
+    ModLog("Mission key is "..data.key)
     -- save the current stage in storage
     local legendary_mission_info = self.legendary_mission_info[head_key]
 
@@ -629,10 +631,11 @@ function headtaking:construct_mission_from_data(data, head_key, stage_num)
 
     -- trigger the constructor if there is one
     if is_function(data.constructor) then
+        ModLog("Constructing!")
         data = data.constructor(data, self, head_key)
 
         if not data then
-            -- construction failed, errmg
+            ModLog("Constructor failed D:")
             return false
         end
     end
@@ -641,29 +644,42 @@ function headtaking:construct_mission_from_data(data, head_key, stage_num)
     local mission = mission_manager:new(self.faction_key, data.key)
 
     mission:add_new_objective(data.objective)
+    ModLog("Objective added "..data.objective)
+    
+    mission:set_mission_issuer("squeak")
 
     if not is_table(data.condition) then data.condition = {data.condition} end
     for i = 1, #data.condition do
         local condition = data.condition[i]
         mission:add_condition(condition)
+        ModLog("Condition added "..condition)
     end
 
     mission:add_payload(data.payload)
+    ModLog("Payload added "..data.payload)
+
     mission:trigger()
+
+    ModLog("trigger'd")
 
     -- if there's a start func for whatever reason, call it!
     if data.start_func then
         data.start_func(self, head_key)
+        ModLog("Start func'd")
     end
 
     -- trigger any listener releated
     local listener = data.listener
 
+    local ok, err = pcall(function()
+
     if is_function(listener) then
         listener = listener(self, head_key)
+        ModLog("Listener func'd")
     end
 
     if is_table(listener) then
+        ModLog("Listener'd")
         core:add_listener(
             listener.name,
             listener.event_name,
@@ -672,6 +688,7 @@ function headtaking:construct_mission_from_data(data, head_key, stage_num)
             listener.persistence or false
         )
     end
+end) if not ok then ModLog(err) end
 end
 
 function headtaking:trigger_random_legendary_head_mission_at_stage(head_key, stage_num)
@@ -689,14 +706,20 @@ function headtaking:trigger_random_legendary_head_mission_at_stage(head_key, sta
     -- randomly pick one of the missions at this stage
     local mission = stage_missions[cm:random_number(#stage_missions)]
 
+    -- copy the reference (so we don't override the table in self.legendary_missions)
+    local data = {}
+    for k,v in pairs(mission) do
+        data[k] = v
+    end
+
     -- change the override_text to be the override_text..head_key, for proper localisation
-    if is_table(mission.condition) and string.find(mission.condition[2], "override_text") then
+    if is_table(data.condition) and string.find(data.condition[2], "override_text") then
         -- changes "legendary_head_1_raid" to "legendary_head_1_raid_legendary_head_belegar", wow that sucks. TODO make this suck less prolly?
-        mission.condition[2] = mission.condition[2].."_"..head_key
+        data.condition[2] = data.condition[2].."_"..head_key
     end
 
     -- construct and trigger that shit
-    self:construct_mission_from_data(mission, head_key, stage_num)
+    self:construct_mission_from_data(data, head_key, stage_num)
 end
 
 -- trigger individual missions in each legendary head chain
