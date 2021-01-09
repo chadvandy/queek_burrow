@@ -10,36 +10,38 @@ return {
             objective = "SCRIPTED",
             condition = {"script_key legendary_head_1_raid", "override_text mission_text_text_legendary_head_1_raid"},
             payload = "money 500",
-            listener = function(headtaking, head_key)
-                local head_obj = headtaking.legendary_heads[head_key]
-                local faction_key = head_obj.faction_key
+            listener = [[
+                function(headtaking, head_key)
+                    local head_obj = headtaking.legendary_heads[head_key]
+                    local faction_key = head_obj.faction_key
 
-                if not type(faction_key) == "string" then
-                    ModLog("there is no faction key")
-                    return nil
-                end
+                    if not type(faction_key) == "string" then
+                        ModLog("there is no faction key")
+                        return nil
+                    end
 
-                return {
-                    name = "legendary_head_1_raid",
-                    event_name = "CharacterTurnStart",
-                    conditional = function(context)
-                        local char = context:character()
-                        if char:faction():name() == "wh2_main_skv_clan_mors" and char:has_military_force() and char:military_force():active_stance() == "MILITARY_FORCE_ACTIVE_STANCE_TYPE_LAND_RAID" then
-                            local region = char:region()
-                            if not region:is_null_interface() and not region:is_abandoned() then
-                                if region:owning_faction():name() == faction_key then
-                                    return true
+                    return {
+                        name = "legendary_head_1_raid",
+                        event_name = "CharacterTurnStart",
+                        conditional = function(context)
+                            local char = context:character()
+                            if char:faction():name() == "wh2_main_skv_clan_mors" and char:has_military_force() and char:military_force():active_stance() == "MILITARY_FORCE_ACTIVE_STANCE_TYPE_LAND_RAID" then
+                                local region = char:region()
+                                if not region:is_null_interface() and not region:is_abandoned() then
+                                    if region:owning_faction():name() == faction_key then
+                                        return true
+                                    end
                                 end
                             end
-                        end
 
-                        return false
-                    end,
-                    callback = function(context)
-                        cm:complete_scripted_mission_objective("legendary_head_1_raid", "legendary_head_1_raid", true)
-                    end,
-                }
-            end,
+                            return false
+                        end,
+                        callback = function(context)
+                            cm:complete_scripted_mission_objective("legendary_head_1_raid", "legendary_head_1_raid", true)
+                        end,
+                    }
+                end
+            ]],
             start_func = nil,
             end_func = nil,
             constructor = nil,
@@ -49,7 +51,8 @@ return {
             objective = "SCRIPTED",
             condition = {"script_key legendary_head_1_raze", "override_text mission_text_text_legendary_head_1_raze"},
             payload = "money 500",
-            listener = function(headtaking, head_key)
+            listener = [[
+                function(headtaking, head_key)
                 local head_obj = headtaking.legendary_heads[head_key]
                 local faction_key = head_obj.faction_key
 
@@ -80,7 +83,8 @@ return {
                         cm:complete_scripted_mission_objective("legendary_head_1_raze", "legendary_head_1_raze", true)
                     end,
                 }
-            end,
+            end
+            ]],
             start_func = nil,
             end_func = nil,
             constructor = nil,
@@ -93,26 +97,28 @@ return {
             objective = "SCRIPTED",
             condition = {"script_key legendary_head_2_trophy", "override_text mission_text_text_legendary_head_2_trophy"},
             payload = "money 2000",
-            listener = function(headtaking, head_key)
-                local head_obj = headtaking.legendary_heads[head_key]
-                local faction_key = head_obj.faction_key
+            listener = [[
+                function(headtaking, head_key)
+                    local head_obj = headtaking.legendary_heads[head_key]
+                    local faction_key = head_obj.faction_key
 
-                if not type(faction_key) == "string" then
-                    -- errmsg!
-                    return nil
+                    if not type(faction_key) == "string" then
+                        -- errmsg!
+                        return nil
+                    end
+                    
+                    return {
+                        name = "legendary_head_2_trophy",
+                        event_name = "HeadtakingCollectedHead",
+                        conditional = function(context)
+                            return context:faction_key() == faction_key
+                        end,
+                        callback = function(context)
+                            cm:complete_scripted_mission_objective("legendary_head_2_trophy", "legendary_head_2_trophy", true)
+                        end,
+                    }
                 end
-                
-                return {
-                    name = "legendary_head_2_trophy",
-                    event_name = "HeadtakingCollectedHead",
-                    conditional = function(context)
-                        return context:faction_key() == faction_key
-                    end,
-                    callback = function(context)
-                        cm:complete_scripted_mission_objective("legendary_head_2_trophy", "legendary_head_2_trophy", true)
-                    end,
-                }
-            end,
+            ]],
             start_func = nil,
             end_func = nil,
             constructor = nil,
@@ -122,41 +128,43 @@ return {
             objective = "SCRIPTED",
             condition = {"script_key legendary_head_2_occupy", "override_text mission_text_text_legendary_head_2_occupy"},
             payload = "money 2000",
-            listener = function(headtaking, head_key)
-                local head_obj = headtaking.legendary_heads[head_key]
-                local faction_key = head_obj.faction_key
+            listener = [[
+                function(headtaking, head_key)
+                    local head_obj = headtaking.legendary_heads[head_key]
+                    local faction_key = head_obj.faction_key
 
-                if not type(faction_key) == "string" then
-                    -- errmsg!
-                    return nil
+                    if not type(faction_key) == "string" then
+                        -- errmsg!
+                        return nil
+                    end
+
+                    return {
+                        name = "legendary_head_2_occupy",
+                        event_name = "RegionFactionChangeEvent",
+                        conditional = function(context)
+                            -- see that the targeted faction lost a region + that Queek took it
+                            return context:previous_faction():name() == faction_key and not context:region():is_abandoned() and context:region():owning_faction():name() == headtaking.faction_key
+                        end,
+                        callback = function(context)
+                            local headtaking = core:get_static_object("headtaking")
+                            local mission_info = headtaking.legendary_mission_info[head_key]
+
+                            mission_info.tracker = mission_info.tracker + 1
+
+                            if mission_info.tracker == 3 then
+                                cm:complete_scripted_mission_objective("legendary_head_2_trophy", "legendary_head_2_trophy", true)
+                                -- core:remove_listener("legendary_head_2_occupy") TODO, figure out unique keys for the listeners so they can be propa removed
+                            end
+                        end,
+                    }
                 end
-
-                return {
-                    name = "legendary_head_2_occupy",
-                    event_name = "RegionFactionChangeEvent",
-                    conditional = function(context)
-                        -- see that the targeted faction lost a region + that Queek took it
-                        return context:previous_faction():name() == faction_key and not context:region():is_abandoned() and context:region():owning_faction():name() == headtaking.faction_key
-                    end,
-                    callback = function(context)
-                        local headtaking = core:get_static_object("headtaking")
-                        local mission_info = headtaking.legendary_mission_info[head_key]
-
-                        mission_info.tracker = mission_info.tracker + 1
-
-                        if mission_info.tracker == 3 then
-                            cm:complete_scripted_mission_objective("legendary_head_2_trophy", "legendary_head_2_trophy", true)
-                            -- core:remove_listener("legendary_head_2_occupy") TODO, figure out unique keys for the listeners so they can be propa removed
-                        end
-                    end,
-                }
-            end,
-            start_func = function(headtaking, head_key)
-                headtaking.legendary_mission_info[head_key].tracker = 0
-            end,
-            end_func = function(headtaking, head_key)
-                
-            end,
+            ]],
+            start_func = [[
+                function(headtaking, head_key)
+                    headtaking.legendary_mission_info[head_key].tracker = 0
+                end
+            ]],
+            end_func = noctilus_war_mission,
             constructor = nil,
         },
         {   -- defeat three armies
@@ -167,23 +175,25 @@ return {
             listener = nil,
             start_func = nil,
             end_func = nil,
-            constructor = function(mission, headtaking, head_key)
-                local head_obj = headtaking.legendary_heads[head_key]
-                local faction_key = head_obj.faction_key
+            constructor = [[
+                function(mission, headtaking, head_key)
+                    local head_obj = headtaking.legendary_heads[head_key]
+                    local faction_key = head_obj.faction_key
 
-                if not type(faction_key) == "string" then
-                    -- errmsg!
-                    return nil
+                    if not type(faction_key) == "string" then
+                        -- errmsg!
+                        return nil
+                    end
+
+                    -- defeat 3 armies of faction "faction_key"
+                    mission.condition = {
+                        "total 3",
+                        "faction "..faction_key,
+                    }
+
+                    return mission
                 end
-
-                -- defeat 3 armies of faction "faction_key"
-                mission.condition = {
-                    "total 3",
-                    "faction "..faction_key,
-                }
-
-                return mission
-            end,
+            ]],
         },
     },
     -- third chain missions!
@@ -196,30 +206,32 @@ return {
             listener = nil,
             start_func = nil,
             end_func = nil,
-            constructor = function(mission, headtaking, head_key)
-                local head_obj = headtaking.legendary_heads[head_key]
-                local faction_key = head_obj.faction_key
+            constructor = [[
+                function(mission, headtaking, head_key)
+                    local head_obj = headtaking.legendary_heads[head_key]
+                    local faction_key = head_obj.faction_key
 
-                if not type(faction_key) == "string" then
-                    -- errmsg!
-                    return nil
+                    if not type(faction_key) == "string" then
+                        -- errmsg!
+                        return nil
+                    end
+
+                    local faction_obj = cm:get_faction(faction_key)
+                    local capital = faction_obj:home_region()
+                    if capital:is_null_interface() then
+                        -- what do????
+                        return nil
+                    end
+
+                    -- raze capital
+                    mission.condition = {
+                        "total 1",
+                        "region "..capital:name(),
+                    }
+
+                    return mission
                 end
-
-                local faction_obj = cm:get_faction(faction_key)
-                local capital = faction_obj:home_region()
-                if capital:is_null_interface() then
-                    -- what do????
-                    return nil
-                end
-
-                -- raze capital
-                mission.condition = {
-                    "total 1",
-                    "region "..capital:name(),
-                }
-
-                return mission
-            end,
+            ]],
         },
     },
 }

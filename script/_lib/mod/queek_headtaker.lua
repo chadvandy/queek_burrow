@@ -511,7 +511,11 @@ function headtaking:track_legendary_heads()
 
             -- trigger any end-function if any are set
             if mission_obj.end_func then
-                mission_obj.end_func(self, head_key)
+                local f = loadstring(mission_obj.end_func)
+                setfenv(f, core:get_env())
+                f(self, head_key)
+
+                -- mission_obj.end_func(self, head_key)
             end
 
             -- reward the head if it's the last mission of this chain
@@ -523,9 +527,13 @@ function headtaking:track_legendary_heads()
                 core:trigger_custom_event("HeadtakingLegendaryHeadRetrieved", {headtaking=self, head_key=head_key})
                 return
             end
-
             -- trigger the next mission
             local next_stage = stage+1
+
+            self.legendary_mission_info[head_key].mission_key = ""
+            self.legendary_mission_info[head_key].tracker = nil
+            self.legendary_mission_info[head_key].stage = next_stage
+
             self:trigger_legendary_head_mission(head_key, next_stage)
         end,
         true
@@ -535,7 +543,7 @@ function headtaking:track_legendary_heads()
     for head_key,obj in pairs(legendary_heads) do
 
         -- initalize the mission_info table if it hasn't been yet
-        if not legendary_mission_info[head_key] then legendary_mission_info[head_key] = {stage=0} end
+        if not legendary_mission_info[head_key] then legendary_mission_info[head_key] = {stage=0, mission_key = "", tracker = nil} end
 
         local mission_info = legendary_mission_info[head_key]
 
@@ -601,6 +609,11 @@ function headtaking:initialize_legendary_head_listener(mission_obj, head_key)
 
     local listener = mission_obj.listener
 
+    if is_string(listener) then
+        listener = loadstring(listener)
+        setfenv(listener, core:get_env())
+    end
+
     if is_function(listener) then
         listener = listener(self, head_key)
     end
@@ -630,6 +643,11 @@ function headtaking:construct_mission_from_data(data, head_key, stage_num)
     legendary_mission_info.tracker = nil
 
     -- trigger the constructor if there is one
+    if is_string(data.constructor) then
+        data.constructor = loadstring(data.constructor)
+        setfenv(data.constructor, core:get_env())
+    end
+
     if is_function(data.constructor) then
         ModLog("Constructing!")
         data = data.constructor(data, self, head_key)
@@ -664,14 +682,24 @@ function headtaking:construct_mission_from_data(data, head_key, stage_num)
 
     -- if there's a start func for whatever reason, call it!
     if data.start_func then
-        data.start_func(self, head_key)
+        local f = loadstring(data.start_func)
+        setfenv(f, core:get_env())
+
+        f(self, head_key)
         ModLog("Start func'd")
+
+        -- data.start_func(self, head_key)
     end
 
     -- trigger any listener releated
     local listener = data.listener
 
     local ok, err = pcall(function()
+
+    if is_string(listener) then
+        listener = loadstring(listener)
+        setfenv(listener, core:get_env())
+    end
 
     if is_function(listener) then
         listener = listener(self, head_key)
@@ -706,20 +734,80 @@ function headtaking:trigger_random_legendary_head_mission_at_stage(head_key, sta
     -- randomly pick one of the missions at this stage
     local mission = stage_missions[cm:random_number(#stage_missions)]
 
+    -- TODO need to do a deep-copy
     -- copy the reference (so we don't override the table in self.legendary_missions)
     local data = {}
     for k,v in pairs(mission) do
         data[k] = v
     end
 
-    -- change the override_text to be the override_text..head_key, for proper localisation
-    if is_table(data.condition) and string.find(data.condition[2], "override_text") then
-        -- changes "legendary_head_1_raid" to "legendary_head_1_raid_legendary_head_belegar", wow that sucks. TODO make this suck less prolly?
-        data.condition[2] = data.condition[2].."_"..head_key
+    -- check if there's already a mission (or more) with this key active, and then iterate the key suffix one more (max of 3)
+    local highest_append = self:is_legendary_head_mission_active(data.key)
+    if highest_append then
+        if highest_append == 3 then
+            -- find another mission?
+            -- TODO prevent infi loop
+            self:trigger_random_legendary_head_mission_at_stage(head_key, stage_num)
+            return
+        else
+            -- append +1
+            data.key = data.key .. "_" .. tostring(highest_append + 1)
+        end
+    else
+        -- append "_1" to the end
+        data.key = data.key .. "_1"
+    end
+
+    ModLog("relevant mission key: "..mission.key)
+    ModLog("copied mission key: "..data.key)
+
+    -- change the override_text field to be override_text..head_key, for proper localisation
+    if is_table(data.condition) then
+        for i = 1, #data.condition do
+            local condition = data.condition[i]
+            if string.find(condition, "override_text") then
+                -- changes "legendary_head_1_raid" to "legendary_head_1_raid_legendary_head_belegar", wow that sucks. TODO make this suck less prolly?
+                local str = mission.condition[i]
+                condition = condition .. "_" .. head_key
+
+                ModLog("changed condition: " .. condition)
+
+                
+                -- this prevents the above from FOR SOME FUCKING REASON overwriting the mission table
+                -- TODO this overwrites data.condition, what the FUCK
+                mission.condition[i] = str
+
+                data.condition[i] = condition
+                
+                ModLog("og condition: "..mission.condition[i])
+                ModLog("copied condition: ".. data.condition[i])
+            end
+        end
     end
 
     -- construct and trigger that shit
     self:construct_mission_from_data(data, head_key, stage_num)
+end
+
+-- check if there is any random-gen'd mission with this key active; return false, or the highest number appended if any are found
+function headtaking:is_legendary_head_mission_active(mission_key)
+    local mission_infos = self.legendary_mission_info
+
+    local highest_append = 0
+
+    for head_key, mission_info in pairs(mission_infos) do
+        local key = mission_info.mission_key
+
+        if string.find(key, mission_key) then
+            -- grab the end of the mission key (ie. "legendary_head_1_raid_1" will return "1")
+            local append = tonumber(string.sub(key, -1, -1))
+            if append > highest_append then
+                highest_append = append
+            end
+        end
+    end
+
+    if highest_append == 0 then return false else return highest_append end
 end
 
 -- trigger individual missions in each legendary head chain
@@ -731,6 +819,14 @@ function headtaking:trigger_legendary_head_mission(head_key, stage_num)
     end
 
     if not is_number(stage_num) then stage_num = 1 end
+
+    -- check if there's already a mission active for this leghead; if there is, skip
+    local current_key = self.legendary_mission_info[head_key].mission_key
+
+    if is_string(current_key) and current_key ~= "" then
+        -- errmsg, mission already active
+        return
+    end
     
     local legendary_obj = self.legendary_heads[head_key]
     local mission_chain = legendary_obj.mission_chain
