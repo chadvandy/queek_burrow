@@ -719,6 +719,27 @@ function headtaking:construct_mission_from_data(data, head_key, stage_num)
 end) if not ok then ModLog(err) end
 end
 
+local function deepcopy(orig, copies)
+    copies = copies or {}
+    local orig_type = type(orig)
+    local copy
+    if orig_type == 'table' then
+        if copies[orig] then
+            copy = copies[orig]
+        else
+            copy = {}
+            copies[orig] = copy
+            for orig_key, orig_value in next, orig, nil do
+                copy[deepcopy(orig_key, copies)] = deepcopy(orig_value, copies)
+            end
+            setmetatable(copy, deepcopy(getmetatable(orig), copies))
+        end
+    else -- number, string, boolean, etc
+        copy = orig
+    end
+    return copy
+end
+
 function headtaking:trigger_random_legendary_head_mission_at_stage(head_key, stage_num)
     local legendary_missions = self.legendary_missions
 
@@ -736,10 +757,7 @@ function headtaking:trigger_random_legendary_head_mission_at_stage(head_key, sta
 
     -- TODO need to do a deep-copy
     -- copy the reference (so we don't override the table in self.legendary_missions)
-    local data = {}
-    for k,v in pairs(mission) do
-        data[k] = v
-    end
+    local data = deepcopy(mission)
 
     -- check if there's already a mission (or more) with this key active, and then iterate the key suffix one more (max of 3)
     local highest_append = self:is_legendary_head_mission_active(data.key)
