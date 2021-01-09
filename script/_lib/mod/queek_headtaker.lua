@@ -36,6 +36,8 @@ local headtaking = {
     -- saves the stages of each legendary head mission
     legendary_mission_info = {},
 
+    -- data-ified missions for legendary heads and squeak stages
+    legendary_missions = require("script/headtaking/legendary_missions"),
     squeak_missions = require("script/headtaking/squeak_missions"),
 
     chance = 100,
@@ -75,10 +77,13 @@ function headtaking:add_head_with_key(head_key, details)
         }
     end
 
+    -- prevent any breaking here
+    if not details then details = {} end
+
     -- if we're passing in a "details" table, save it to the table for this head
-    if details and is_table(details) then
-        self.heads[head_key]["history"][#self.heads[head_key]["history"]+1] = details
-    end
+    -- if details and is_table(details) then
+    self.heads[head_key]["history"][#self.heads[head_key]["history"]+1] = details
+    -- end
 
     -- we already have this head, add it to the heads table
     if faction_cooking_info:is_ingredient_unlocked(head_key) then
@@ -112,7 +117,7 @@ function headtaking:add_head_with_key(head_key, details)
         )
     end
 
-    core:trigger_custom_event("HeadtakingCollectedHead", {["headtaking"] = self, ["head"] = self.heads[head_key]})
+    core:trigger_custom_event("HeadtakingCollectedHead", {["headtaking"] = self, ["head"] = self.heads[head_key], ["faction_key"] = details.faction_key})
 end
 
 --[[
@@ -489,7 +494,14 @@ function headtaking:track_legendary_heads()
             local mission = context:mission()
             local mission_key = mission:mission_record_key()
 
+            -- TODO make this work with the auto-gen'd missions
+            -- can do that by, say, looping through all the mission infos, checking mission keys
+            -- try to make it so there's no way to double up on mission keys between different heads
+
+            -- cut off the "_1" or w/e ending
             local head_key = string.sub(mission_key, 1, -3)
+
+            -- grab just the number, ie. "1"
             local stage = tonumber(string.sub(mission_key, -1, -1))
 
             local legendary_obj = self.legendary_heads[head_key]
@@ -499,7 +511,7 @@ function headtaking:track_legendary_heads()
 
             -- trigger any end-function if any are set
             if mission_obj.end_func then
-                mission_obj.end_func(mission_obj)
+                mission_obj.end_func(self, head_key)
             end
 
             -- reward the head if it's the last mission of this chain
@@ -552,19 +564,139 @@ function headtaking:track_legendary_heads()
             local mission_chain = obj.mission_chain
             local mission = mission_chain[mission_info.stage]
 
-            local listener = mission.listener
-
-            if listener then
-                core:add_listener(
-                    listener.name,
-                    listener.event_name,
-                    listener.conditional,
-                    listener.callback,
-                    listener.persistence or false
-                )
-            end
+            self:initialize_legendary_head_listener(mission, head_key)
         end
     end
+end
+
+function headtaking:initialize_legendary_head_listener(mission_obj, head_key)
+    local mission_info = self.legendary_mission_info[head_key]
+
+    -- grab the mission obj for the generated mission
+    if mission_obj.key == "GENERATED" then
+        local mission_key = mission_info.mission_key
+
+        if not is_string(mission_key) then
+            -- errmsg generated mission key wasn't saved???
+            
+            return false
+        end
+
+        -- grab the mission from the default legendary_missions table (for the current stage)
+        local legendary_missions = self.legendary_missions[mission_info.stage]
+
+        for i = 1, legendary_missions do
+            local mish = legendary_missions[i]
+            if mish.key == mission_key then
+                mission_obj = mish
+            end
+        end
+
+        if mission_obj.key == "GENERATED" then
+            -- errmsg couldn't find the mission used, wtf?
+
+            return false
+        end
+    end
+
+    local listener = mission_obj.listener
+
+    if is_function(listener) then
+        listener = listener(self, head_key)
+    end
+
+    if is_table(listener) then
+        core:add_listener(
+            listener.name,
+            listener.event_name,
+            listener.conditional,
+            listener.callback,
+            listener.persistence or false
+        )
+    end
+end
+
+function headtaking:construct_mission_from_data(data, head_key, stage_num)
+    -- save the current stage in storage
+    local legendary_mission_info = self.legendary_mission_info[head_key]
+
+    -- save the stage num and mission key to grab them later on
+    legendary_mission_info.stage = stage_num
+    legendary_mission_info.mission_key = data.key
+
+    -- nil out the tracker (used for counting objectives like "defeat 3 armies") so there's no false positives
+    legendary_mission_info.tracker = nil
+
+    -- trigger the constructor if there is one
+    if is_function(data.constructor) then
+        data = data.constructor(data, self, head_key)
+
+        if not data then
+            -- construction failed, errmg
+            return false
+        end
+    end
+
+    -- use the mission_manager to do all the heavy lifting of constructing the mission string
+    local mission = mission_manager:new(self.faction_key, data.key)
+
+    mission:add_new_objective(data.objective)
+
+    if not is_table(data.condition) then data.condition = {data.condition} end
+    for i = 1, #data.condition do
+        local condition = data.condition[i]
+        mission:add_condition(condition)
+    end
+
+    mission:add_payload(data.payload)
+    mission:trigger()
+
+    -- if there's a start func for whatever reason, call it!
+    if data.start_func then
+        data.start_func(self, head_key)
+    end
+
+    -- trigger any listener releated
+    local listener = data.listener
+
+    if is_function(listener) then
+        listener = listener(self, head_key)
+    end
+
+    if is_table(listener) then
+        core:add_listener(
+            listener.name,
+            listener.event_name,
+            listener.conditional,
+            listener.callback,
+            listener.persistence or false
+        )
+    end
+end
+
+function headtaking:trigger_random_legendary_head_mission_at_stage(head_key, stage_num)
+    local legendary_missions = self.legendary_missions
+
+    local stage_missions = legendary_missions[stage_num]
+
+    if not is_table(stage_missions) or #stage_missions < 1 then
+        -- errmsg no missions at this stage???
+        return false
+    end
+
+    -- TODO maybe later on have this be a weighted random, to prevent the same mission being picked several times
+
+    -- randomly pick one of the missions at this stage
+    local mission = stage_missions[cm:random_number(#stage_missions)]
+
+    -- change the override_text to be the override_text..head_key, for proper localisation
+    if is_table(mission.condition) and string.find(mission.condition[2], "override_text") then
+        -- changes "legendary_head_1_raid" to "legendary_head_1_raid_legendary_head_belegar", wow that sucks. TODO make this suck less prolly?
+        mission.condition[2] = mission.condition[2].."_"..head_key
+    end
+
+    -- construct and trigger that shit
+    self:construct_mission_from_data(mission, head_key, stage_num)
 end
 
 -- trigger individual missions in each legendary head chain
@@ -576,57 +708,24 @@ function headtaking:trigger_legendary_head_mission(head_key, stage_num)
     end
 
     if not is_number(stage_num) then stage_num = 1 end
-
-    -- save the current stage in storage
-    self.legendary_mission_info[head_key].stage = stage_num
-
-    -- TODO pick a mission for this stage from a list
-
+    
     local legendary_obj = self.legendary_heads[head_key]
     local mission_chain = legendary_obj.mission_chain
     local mission_obj = mission_chain[stage_num]
-
+    
     if not mission_obj then
         -- errmsg
         return false
     end
-
-    if is_function(mission_obj.constructor) then
-        mission_obj = mission_obj.constructor(mission_obj)
-
-        if not mission_obj then
-            -- construction failed, errmg
-            return false
-        end
+    
+    -- pick a mission for this stage from a list, if it's a generated mission
+    if mission_obj.key == "GENERATED" then
+        -- construct this mission elsewhere
+        self:trigger_random_legendary_head_mission_at_stage(head_key, stage_num)
+        return
     end
 
-    local mission = mission_manager:new(self.faction_key, mission_obj.key)
-
-    mission:add_new_objective(mission_obj.objective)
-
-    if not is_table(mission_obj.condition) then mission_obj.condition = {mission_obj.condition} end
-    for i = 1, #mission_obj.condition do
-        local condition = mission_obj.condition[i]
-        mission:add_condition(condition)
-    end
-
-    mission:add_payload(mission_obj.payload)
-    mission:trigger()
-
-    if mission_obj.start_func then
-        mission_obj.start_func(mission_obj)
-    end
-
-    local listener = mission_obj.listener
-    if listener then
-        core:add_listener(
-            listener.name,
-            listener.event_name,
-            listener.conditional,
-            listener.callback,
-            false
-        )
-    end
+    self:construct_mission_from_data(mission_obj, head_key, stage_num)
 end
 
 -- this is called when Squeak is propa upgraded
