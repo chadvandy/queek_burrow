@@ -481,7 +481,6 @@ end
 -- this tracks the current LL missions (initialized through Squeak Init if it's over stage 1)
 function headtaking:track_legendary_heads()
     local legendary_heads = self.legendary_heads
-    local legendary_mission_info = self.legendary_mission_info
 
     -- check for completion of any legendary head missions
     core:add_listener(
@@ -543,9 +542,9 @@ function headtaking:track_legendary_heads()
     for head_key,obj in pairs(legendary_heads) do
 
         -- initalize the mission_info table if it hasn't been yet
-        if not legendary_mission_info[head_key] then legendary_mission_info[head_key] = {stage=0, mission_key = "", tracker = nil} end
+        if not self.legendary_mission_info[head_key] then ModLog("making leghead mission info for head "..head_key) self.legendary_mission_info[head_key] = {stage=0, mission_key = "", tracker = nil} end
 
-        local mission_info = legendary_mission_info[head_key]
+        local mission_info = self.legendary_mission_info[head_key]
 
         -- if it's the pre-stage (0), then initialize the pre-requisite listener
         if mission_info.stage == 0 then
@@ -1345,7 +1344,7 @@ function headtaking:set_head_counters()
         local ingredient_list = UIComponent(category:Find("ingredient_list"))
 
         -- only count heads on non-Nemeses heads
-        if not string.find(category:Id(), "nemesis") then
+        if not string.find(category:Id(), "nemeses") then
             for j = 0, ingredient_list:ChildCount() -1 do
                 local ingredient = UIComponent(ingredient_list:Find(j))
                 local id = ingredient:Id()
@@ -1393,33 +1392,57 @@ function headtaking:set_head_counters()
                     end
                 end
             end
-        else -- hide Nemesis heads if they're still locked, and include a template dummy if there's more hidden heads
-            -- TODO don't hide them if they're locked, hide them if the MISSION isn't started
+        else 
+            -- hide Nemesis heads if they're still locked, and include a template dummy if there's more hidden heads
+            ModLog("in nemeses heads")
             local any_hidden = false
             for j = 0, ingredient_list:ChildCount() -1 do
                 local ingredient = UIComponent(ingredient_list:Find(j))
                 local id = ingredient:Id()
-                local ingredient_key = string.gsub(id, "CcoCookingIngredientRecord", "")
+                ModLog("checking ingredient "..id)
+                local head_key = string.gsub(id, "CcoCookingIngredientRecord", "")
 
-                local num_heads = self.heads[ingredient_key]["num_heads"]
-
-                if num_heads == -1 then
-                    -- this head is locked - hide it from the UI
-                    ingredient:SetVisible(false)
-                    any_hidden = true
+                -- skip template_ingredient
+                if head_key == "template_ingredient" then
+                    -- skip
                 else
-                    -- is anything needed here?
+                    -- if the mission chain hasn't started to get this head (stage 0), hide the head
+                    local legendary_mission_info = self.legendary_mission_info[head_key]
+                    local stage = legendary_mission_info.stage
+
+                    local visible = true
+
+                    ModLog("current stage is: "..tostring(stage))
+
+                    if not stage or stage == 0 then
+                        -- this head is locked - hide it from the UI
+                        visible = false
+                        any_hidden = true
+                    else
+                        -- is anything needed here?
+                    end
+
+                    ModLog("setting visibility: "..tostring(visible))
+
+                    ingredient:SetVisible(visible)
                 end
             end
 
             -- create a lil dummy ingredient!
             if any_hidden then
+                ModLog("any have been hidden, making a dummy")
                 local template = UIComponent(ingredient_list:Find("template_ingredient"))
+                ModLog("still here")
                 local dummy = UIComponent(template:CopyComponent("nemesis_dummy"))
+                ModLog("still here 2")
                 local slot_item = UIComponent(dummy:Find("slot_item"))
+                ModLog("still here 3")
 
                 dummy:SetVisible(true)
+                ModLog("still here 4")
                 -- set a tooltip and set a ??? image
+                slot_item:SetTooltipText("Get some heads!", true)
+                ModLog("still here 5")
             end
         end
     end
@@ -1531,12 +1554,33 @@ function headtaking:ui_init()
         -- remove_component(tt)
 
         -- change the text on Collected Heads / Collected Legendary Heads
-        local heads_num = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "ingredients_progress_holder", "ingredients_progress_number")
 
         -- TODO decide if this should be X / Total Heads or X / (Total Heads - Legendaries)
+        local heads_num = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "ingredients_progress_holder", "ingredients_progress_number")
 
         local legendary_num = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "recipes_progress_holder", "recipes_progress_number")
-        legendary_num:SetStateText(tostring(self.legendary_heads_num) .. " / " .. tostring(self.legendary_heads_max))
+
+        local str = ""
+
+        -- if there's unknown heads yet, use "X / ?"
+        local legendary_mission_info = self.legendary_mission_info
+        local any_unknown = false
+
+        for _,obj in pairs(legendary_mission_info) do
+            if obj.stage == 0 then
+                any_unknown = true
+            end
+        end
+        
+        local current_heads = tostring(self.legendary_heads_num)
+        if any_unknown then
+            -- set the counter to "X Heads / ?"
+            str = current_heads .. " / ?"
+        else    -- set the legendary heads counter to "X Heads / Total Heads"
+            str = current_heads .. " / " .. tostring(self.legendary_heads_max)
+        end
+
+        legendary_num:SetStateText(str)
 
         -- re-enable the recipe book, luh-mao
         local recipe_book = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_button_group")
@@ -1550,6 +1594,7 @@ function headtaking:ui_init()
         local slot_holder = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "ingredients_and_effects")
         local arch = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "arch")
 
+        -- TODO move this into the UI file, fuck it
         -- move the four slots to line up with the pikes
         local pikes = {
             [1] = 167,
@@ -1581,7 +1626,7 @@ function headtaking:ui_init()
             slot:MoveTo(slotx, sloty)
         end
 
-        -- move the four rows so it goes Nemesis -> T1 -> T2 -> T3
+        -- move the rows into a predetermined order
         local category_list = find_uicomponent("queek_cauldron", "left_colum", "ingredients_holder", "ingredient_category_list")
 
         local ok, err = pcall(function()
@@ -1653,8 +1698,6 @@ function headtaking:ui_init()
                 list_box:Adopt(addresses[i])
             end
 
-            -- ModLog("farlg")
-
             list_box:Layout()
             vslider:SetVisible(true)
 
@@ -1668,8 +1711,6 @@ function headtaking:ui_init()
             list_box:Resize(cw, ch+150)
             list_box:SetCanResizeHeight(false)
             list_box:SetCanResizeWidth(false)
-            
-            -- ModLog("awefawef")
 
         end) if not ok then ModLog(err) end
 
@@ -1686,13 +1727,12 @@ function headtaking:ui_init()
             "test_if_open",
             "RealTimeTrigger",
             function(context)
-                --ModLog("test_if_open!")
                 return context.string == "queek_cauldron_test_open" and is_uicomponent(find_uicomponent("queek_cauldron")) and is_uicomponent(find_uicomponent("queek_cauldron", "left_colum", "ingredients_holder", "component_tooltip"))
             end,
             function(context)
                 real_timer.unregister("queek_cauldron_test_open")
 
-                opened_up() 
+                opened_up()
             end,
             false
         )
