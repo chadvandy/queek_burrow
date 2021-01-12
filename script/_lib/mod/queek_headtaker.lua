@@ -56,18 +56,91 @@ local headtaking = {
     legendary_heads = require("script/headtaking/legendary_heads"),
 }
 
+local function timed_callback(key, condition, callback, time)
+    if not is_string(key) then
+        -- errmsg
+        return false
+    end
+
+    if not is_function(condition) or not condition == true then
+        -- errmsg
+        return false
+    end
+
+    if not is_function(callback) then
+        -- errmsg
+        return false
+    end
+
+    if not is_number(time) then
+        -- errmsg
+        return false
+    end
+    
+    core:add_listener(
+        key,
+        "RealTimeTrigger",
+        function(context)
+            return context.string == key and condition(context)
+        end,
+        function(context)
+            callback(context)
+        end,
+        false
+    )
+
+    real_timer.register_singleshot(key, time)
+end
+
+local function repeat_callback(key, condition, callback, time)
+    if not is_string(key) then
+        -- errmsg
+        return false
+    end
+
+    if not is_function(condition) or not condition == true then
+        -- errmsg
+        return false
+    end
+
+    if not is_function(callback) then
+        -- errmsg
+        return false
+    end
+
+    if not is_number(time) then
+        -- errmsg
+        return false
+    end
+
+    real_timer.register_repeating(key, time)
+
+    core:add_listener(
+        key,
+        "RealTimeTrigger",
+        function(context)
+            return context.string == key and condition(context)
+        end,
+        function(context)
+                callback(context)
+        end,
+        true
+    )
+end
+
 function headtaking:add_head_with_key(head_key, details)
     if not is_string(head_key) then
         -- errmsg
         return false
     end
 
+    -- TODO test that it's a valid head
+
     ModLog("adding head with key "..head_key)
 
     local faction_obj = cm:get_faction(self.faction_key)
     local queek_obj = faction_obj:faction_leader()
 
-    -- TODO test that it's valid
     local faction_cooking_info = cm:model():world():cooking_system():faction_cooking_info(faction_obj)
 
     if not self.heads[head_key] then
@@ -542,7 +615,7 @@ function headtaking:track_legendary_heads()
     for head_key,obj in pairs(legendary_heads) do
 
         -- initalize the mission_info table if it hasn't been yet
-        if not self.legendary_mission_info[head_key] then ModLog("making leghead mission info for head "..head_key) self.legendary_mission_info[head_key] = {stage=0, mission_key = "", tracker = nil} end
+        if not self.legendary_mission_info[head_key] then self.legendary_mission_info[head_key] = {stage=0, mission_key = "", tracker = nil} end
 
         local mission_info = self.legendary_mission_info[head_key]
 
@@ -754,7 +827,6 @@ function headtaking:trigger_random_legendary_head_mission_at_stage(head_key, sta
     -- randomly pick one of the missions at this stage
     local mission = stage_missions[cm:random_number(#stage_missions)]
 
-    -- TODO need to do a deep-copy
     -- copy the reference (so we don't override the table in self.legendary_missions)
     local data = deepcopy(mission)
 
@@ -1142,6 +1214,27 @@ function headtaking:init()
 
     --loyalty_listeners()
 
+    core:add_listener(
+        "queek_turn_start",
+        "FactionTurnStart",
+        function(context)
+            return context:faction():name() == self.faction_key
+        end,
+        function(context)
+            -- check & kill any recipes that are due for killing
+            local duration = self:get_duration_of_current_dish()
+            
+            -- if the adjusted duration is all up, kill the current recipe
+            if duration and duration <= 0 then
+                cm:clear_active_cooking_recipe(cm:get_faction(self.faction_key))
+            end
+
+            -- refresh the header UI
+            self:ui_refresh()
+        end,
+        true
+    )
+
     -- next up, enable some 'eads to be gitted through battles
     core:add_listener(
         "queek_killed_someone",
@@ -1317,14 +1410,156 @@ local function remove_component(uic_obj)
     killer:DestroyChildren()
 end
 
+function headtaking:get_duration_of_current_dish()
+    local info = cm:model():world():cooking_system():faction_cooking_info(cm:get_faction(self.faction_key))
+
+    if info:is_null_interface() then
+        -- errmsg
+        return false
+    end
+
+    local active_dish = info:active_dish()
+    if not string.find(tostring(active_dish), "COOKING_DISH_SCRIPT_INTERFACE") then
+        -- errmsg there is no current dish - skip!
+        return false
+    end
+
+    local key = active_dish:recipe()
+    local duration = active_dish:remaining_duration()
+
+    -- legendary recipes are 10 turns, regs are 5
+    if string.find(key, "legendary_") then
+        duration = duration - 5
+    else
+        duration = duration - 10
+    end
+
+    return tostring(duration)
+end
+
 -- this is called to refresh things like num_heads and the Collected Heads counter and what not
 function headtaking:ui_refresh()
+    self:ui_refresh_header()
+
     if is_uicomponent(find_uicomponent("queek_cauldron")) then
         local ok, err = pcall(function()
-        self:set_head_counters()
+            self:set_head_counters()
+
+            -- change all duration references within the UI --
+            local duration = self:get_duration_of_current_dish()
+
+            if not duration then
+                -- errmsg (? or do nothing because there's no active dish?)
+                return false
+            end
+
+            -- "Effects Duration" within the Recipe Book
+            -- [ui] <84.9s>    root > queek_cauldron > recipe_book_holder > recipe_book > recipes_and_tooltip_holder > recipes_and_tooltip_holder_beholder > dish_tooltip > tooltip_holder > duration
+            do
+                local duration_uic = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_book", "recipes_and_tooltip_holder", "recipes_and_tooltip_holder_beholder", "dish_tooltip", "tooltip_holder", "duration")
+                
+                -- TODO change the duration based on selected
+                duration_uic:SetStateText("For 1000000 Turns TODO THIS")
+            end
+
+            -- "Effects Duration" within dish preview
+            do
+                local duration_uic = find_uicomponent("queek_cauldron", "right_colum", "dish_effects_holder", "dish_effects", "duration")
+
+                -- TODO change the duration based on the recipe displayed
+                duration_uic:SetStateText("For 10000 Turns TODO THIS")
+            end
+
+            -- duration banner in current_dish
+            local timer = find_uicomponent("queek_cauldron", "right_colum", "dish_preview_holder", "current_dish_effect", "current_dish_effect_timer_holder", "grom_dish_effect_timer")
+            timer:SetStateText(duration)
+
+            -- "Effects last for" in current_dish tooltip
+            core:remove_listener("headtaking_duration_panel")
+
+            core:add_listener(
+                "headtaking_duration_panel",
+                "ComponentMouseOn",
+                function(context)
+                    return context.string == "current_dish_effect" and cm:get_local_faction_name(true) == self.faction_key
+                end,
+                function(context)
+                    repeat_callback(
+                        "check_tt_header", 
+                        function(context)
+                            return is_uicomponent(find_uicomponent("tooltip_trophy_rack")) 
+                        end,
+                        function(context)
+                            local tt = find_uicomponent("tooltip_trophy_rack")
+
+                            local timer = find_uicomponent(tt, "active_dish", "timer_text")
+        
+                            local txt = string.format("Effects last for %d turns", duration)
+        
+                            timer:SetStateText(txt)
+
+                            real_timer.unregister("check_tt_header")
+                        end,
+                        1
+                    )
+                end,
+                true
+            )
+
         end) if not ok then ModLog(err) end
     end
 end
+
+-- this refreshes the header, queek_headtaking, instead of the actual panel
+function headtaking:ui_refresh_header()
+    -- check & change the duration
+
+    local header = find_uicomponent("layout", "resources_bar", "topbar_list_parent", "queek_headtaking")
+
+    local duration_banner = find_uicomponent(header, "grom_dish_effect", "grom_dish_effect_number_holder", "grom_dish_effect_number")
+
+    local duration = self:get_duration_of_current_dish()
+
+    if not duration then
+        -- errmsg
+        return false
+    end
+
+    duration_banner:SetStateText(tostring(duration))
+
+    -- remove old listener and add new one for hover of current_dish
+    core:remove_listener("headtaking_duration_header")
+
+    core:add_listener(
+        "headtaking_duration_header",
+        "ComponentMouseOn",
+        function(context)
+            return (context.string == "grom_dish_effect" or context.string == "grom_dish_effect_number") and cm:get_local_faction_name(true) == self.faction_key
+        end,
+        function(context)
+            repeat_callback(
+                "check_tt_header", 
+                function(context) 
+                    return is_uicomponent(find_uicomponent("tooltip_trophy_rack"))
+                end,
+                function(context)
+                    local tt = find_uicomponent("tooltip_trophy_rack")
+
+                    local timer = find_uicomponent(tt, "active_dish", "timer_text")
+
+                    local txt = string.format("Effects last for %d turns", duration)
+
+                    timer:SetStateText(txt)
+
+                    real_timer.unregister("check_tt_header")
+                end,
+                1
+            )
+        end,
+        true
+    )
+end
+
 
 -- this sets the UI for the number of heads and their respective states and opacities
 function headtaking:set_head_counters()
@@ -1408,44 +1643,68 @@ function headtaking:set_head_counters()
                 else
                     -- if the mission chain hasn't started to get this head (stage 0), hide the head
                     local legendary_mission_info = self.legendary_mission_info[head_key]
-                    local stage = legendary_mission_info.stage
 
-                    local visible = true
-
-                    ModLog("current stage is: "..tostring(stage))
-
-                    if not stage or stage == 0 then
-                        -- this head is locked - hide it from the UI
-                        visible = false
-                        any_hidden = true
+                    if not legendary_mission_info then
+                        ModLog("no legendary mission info found for head with key: "..head_key)
                     else
-                        -- is anything needed here?
+                        local stage = legendary_mission_info.stage
+
+                        local visible = true
+
+                        ModLog("current stage is: "..tostring(stage))
+
+                        if not stage or stage == 0 then
+                            -- this head is locked - hide it from the UI
+                            visible = false
+                            any_hidden = true
+                        else
+                            -- is anything needed here?
+                        end
+
+                        ModLog("setting visibility: "..tostring(visible))
+
+                        ingredient:SetVisible(visible)
                     end
-
-                    ModLog("setting visibility: "..tostring(visible))
-
-                    ingredient:SetVisible(visible)
                 end
             end
 
             -- create a lil dummy ingredient!
             if any_hidden then
-                ModLog("any have been hidden, making a dummy")
                 local template = UIComponent(ingredient_list:Find("template_ingredient"))
-                ModLog("still here")
                 local dummy = UIComponent(template:CopyComponent("nemesis_dummy"))
-                ModLog("still here 2")
                 local slot_item = UIComponent(dummy:Find("slot_item"))
-                ModLog("still here 3")
 
                 dummy:SetVisible(true)
-                ModLog("still here 4")
-                -- set a tooltip and set a ??? image
+                -- TODO set a tooltip and set a ??? image
                 slot_item:SetTooltipText("Get some heads!", true)
-                ModLog("still here 5")
             end
         end
     end
+end
+
+-- getter for the number of legendary heads vs. total (ie. 0 / ? or 2 / 4)
+function headtaking:ui_get_num_legendary_heads()
+    -- if there's unknown heads yet, use "X / ?"
+    local legendary_mission_info = self.legendary_mission_info
+    local any_unknown = false
+
+    for _,obj in pairs(legendary_mission_info) do
+        if obj.stage == 0 then
+            any_unknown = true
+        end
+    end
+
+    local str = ""
+    
+    local current_heads = tostring(self.legendary_heads_num)
+    if any_unknown then
+        -- set the counter to "X Heads / ?"
+        str = current_heads .. " / ?"
+    else    -- set the legendary heads counter to "X Heads / Total Heads"
+        str = current_heads .. " / " .. tostring(self.legendary_heads_max)
+    end
+
+    return str
 end
 
 function headtaking:ui_init()
@@ -1460,22 +1719,46 @@ function headtaking:ui_init()
             return false
         end
 
+        -- TODO set this to something more interesting later on
+        -- set the tooltip for the Queek Trait icon
+        local trait = find_uicomponent(uic, "trait")
+        trait:SetTooltipText("Queek's Heads\nCollect more trophy heads to become more powerful!", true)
+
+        -- set the total of heads to be "0 / ?" or "1 / 4" or whatever, depending on known heads
         local grom_goals = uic:SequentialFind("grom_goals")
 
+        local txt = self:ui_get_num_legendary_heads()
+
         grom_goals:SetState("hover")
-        grom_goals:SetStateText(tostring(self.legendary_heads_num) .. " / "..tostring(self.legendary_heads_max))
+        grom_goals:SetStateText(txt)
 
         grom_goals:SetState("NewState")
-        grom_goals:SetStateText(tostring(self.legendary_heads_num) .. " / "..tostring(self.legendary_heads_max))
+        grom_goals:SetStateText(txt)
 
         -- print_all_uicomponent_children(uic)
 
         --uic:SetVisible(true)
         topbar:Layout()
 
-        -- --find_uicomponent(uic, "grom_goals"):SetVisible(false)
-        -- local trait = find_uicomponent(uic, "trait")
-        -- trait:SetImagePath("ui/skins/default/queektrait_icon_large.png")
+        core:add_listener(
+            "queek_goals",
+            "ComponentMouseOn",
+            function(context)
+                return UIComponent(context.component) == grom_goals
+            end,
+            function(context)
+                -- find the tooltip (a child of root called tooltip_queek_goals)
+                local tt = find_uicomponent("tooltip_queek_goals")
+
+                local do_stuff = find_uicomponent(tt, "dy_recipes_eltharion_challenge")
+                local txt = do_stuff:GetStateText()
+                txt = txt .. tostring(self.total_heads)
+
+                do_stuff:SetStateText(txt)
+            end,
+            true
+        )
+
     else
         -- ModLog("topbar unfound?")
     end
@@ -1556,36 +1839,25 @@ function headtaking:ui_init()
         -- change the text on Collected Heads / Collected Legendary Heads
 
         -- TODO decide if this should be X / Total Heads or X / (Total Heads - Legendaries)
+        -- for now it's just X / Total Heads
         local heads_num = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "ingredients_progress_holder", "ingredients_progress_number")
 
         local legendary_num = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "recipes_progress_holder", "recipes_progress_number")
 
-        local str = ""
-
-        -- if there's unknown heads yet, use "X / ?"
-        local legendary_mission_info = self.legendary_mission_info
-        local any_unknown = false
-
-        for _,obj in pairs(legendary_mission_info) do
-            if obj.stage == 0 then
-                any_unknown = true
-            end
-        end
-        
-        local current_heads = tostring(self.legendary_heads_num)
-        if any_unknown then
-            -- set the counter to "X Heads / ?"
-            str = current_heads .. " / ?"
-        else    -- set the legendary heads counter to "X Heads / Total Heads"
-            str = current_heads .. " / " .. tostring(self.legendary_heads_max)
-        end
+        local str = self:ui_get_num_legendary_heads()
 
         legendary_num:SetStateText(str)
+
+        -- TODO make this more interesting later on
+        -- set a tooltip on the Queek Trait icon
+        local trait = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "trait")
+        trait:SetTooltipText("Queek's Heads\nCollect more trophy heads to become more powerful!", true)
 
         -- re-enable the recipe book, luh-mao
         local recipe_book = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_button_group")
         recipe_book:SetVisible(true)
 
+        -- TODO do this for all legendary recipes
         -- hide specific recipe combos from the recipe book
         local hidden_recipe = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_book", "recipes_and_tooltip_holder", "recipes_and_tooltip_holder_beholder", "recipes_holder", "recipes_list","CcoCookingRecipeRecordnemeses")
 
@@ -1595,6 +1867,7 @@ function headtaking:ui_init()
         local arch = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "arch")
 
         -- TODO move this into the UI file, fuck it
+
         -- move the four slots to line up with the pikes
         local pikes = {
             [1] = 167,
@@ -1609,21 +1882,28 @@ function headtaking:ui_init()
         for i,v in ipairs(pikes) do
             local pike_pos = v
             local slot = find_uicomponent(slot_holder, "main_ingredient_slot_"..tostring(i))
+            local animated_frame = find_uicomponent(slot_holder, "main_ingredient_slot_"..tostring(i).."_animated_frame")
 
             local _, sloty = slot:Position()
             local w,_ = slot:Dimensions()
+
+            local _,animy = animated_frame:Position()
+            local animw,_ = animated_frame:Dimensions()
 
             -- this is the hard position on the screen where the middleish of the pike is (pike is 8px wide)
             local end_x = arx + (pike_pos + 4)
 
             -- grab the offset between the slot holder's position and the end result
             local slotx = end_x - (w/2)
+            local animx = end_x - (animw/2)
 
             -- for some reason I'm 14 off, so
             slotx = slotx - 14
+            animx = animx - 15
 
             -- move it
             slot:MoveTo(slotx, sloty)
+            animated_frame:MoveTo(animx, animy)
         end
 
         -- move the rows into a predetermined order
@@ -1639,6 +1919,7 @@ function headtaking:ui_init()
             local vslider = UIComponent(list_view:Find("vslider"))
 
             local cw,ch = category_list:Dimensions()
+            cw = cw + 50
 
             list_view:SetCanResizeHeight(true)
             list_view:SetCanResizeWidth(true)
