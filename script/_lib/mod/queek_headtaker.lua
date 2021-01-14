@@ -1852,321 +1852,6 @@ function headtaking:ui_init()
         -- ModLog("topbar unfound?")
     end
 
-    local function close_listener()
-        core:add_listener(
-            "queek_close_panel",
-            "ComponentLClickUp",
-            function(context)
-                local uic = find_uicomponent("queek_cauldron", "right_colum", "exit_panel_button")
-                if is_uicomponent(uic) then
-                    return context.component == uic:Address()
-                end
-                return false
-            end,
-            function(context)
-                local panel = find_uicomponent("queek_cauldron")
-
-                remove_component(panel)
-
-                -- refresh the header when it's closed!
-                self:ui_refresh_header()
-
-                -- reenable the esc key
-                cm:steal_escape_key(false)
-
-                core:remove_listener("queek_close_panel")
-            end,
-            false
-        )
-
-        core:add_listener(
-            "queek_close_panel",
-            "ShortcutTriggered",
-            function(context) 
-                return context.string == "escape_menu"
-            end,
-            function(context)
-                local panel = find_uicomponent("queek_cauldron")
-                remove_component(panel)
-
-                -- refresh the header when it's closed!
-                self:ui_refresh_header()
-
-                -- reenable the esc key
-                cm:steal_escape_key(false)
-
-                core:remove_listener("queek_close_panel")
-            end,
-            false
-        )
-    end
-
-    local function opened_up()
-        -- prevent the esc key being used
-        cm:steal_escape_key(true)
-
-        -- move the effect list tt out of the way
-        local effect_list = find_uicomponent("queek_cauldron", "left_colum", "ingredients_holder", "component_tooltip")
-        --[[local lview = find_uicomponent(effect_list, "ingredient_effects", "effects_listview")
-        local lclip = find_uicomponent(lview, "list_clip")
-        local lbox = find_uicomponent(lclip, "list_box")]]
-        local x,y = effect_list:GetDockOffset()
-        local p = effect_list:DockingPoint()
-        --local px, py = core:get_screen_resolution()
-        local fx = x --(px * 0.67) + x
-
-        effect_list:SetDockOffset(fx, y * 1.25)
-        effect_list:SetCanResizeHeight(true)
-        effect_list:Resize(effect_list:Width(), effect_list:Height() *1.45)
-        effect_list:SetCanResizeHeight(false)
-        
-        local tt = find_uicomponent("queek_cauldron", "left_colum", "ingredients_holder", "component_tooltip2")
-        tt:SetDockingPoint(p)
-        tt:SetDockOffset(fx + tt:Width(), y * 1.25)
-        tt:SetCanResizeHeight(true)
-        tt:Resize(tt:Width(), tt:Height() *1.45)
-        tt:SetCanResizeHeight(false)
-
-        -- hide for now :(
-        tt:SetVisible(false)
-        -- remove_component(tt)
-
-        -- change the text on Collected Heads / Collected Legendary Heads
-
-        -- TODO decide if this should be X / Total Heads or X / (Total Heads - Legendaries)
-        -- for now it's just X / Total Heads
-        local heads_num = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "ingredients_progress_holder", "ingredients_progress_number")
-
-        local legendary_num = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "recipes_progress_holder", "recipes_progress_number")
-
-        local str = self:ui_get_num_legendary_heads()
-
-        legendary_num:SetStateText(str)
-
-        -- TODO make this more interesting later on
-        -- set a tooltip on the Queek Trait icon
-        local trait = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "trait")
-        trait:SetTooltipText("Queek's Heads\nCollect more trophy heads to become more powerful!", true)
-
-        -- re-enable the recipe book, luh-mao
-        local recipe_book = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_button_group")
-        recipe_book:SetVisible(true)
-
-        -- replace the button icon
-        local recipes_button = find_uicomponent(recipe_book, "recipes_button")
-        recipes_button:SetImagePath("ui/skins/default/icon_queekcooking_cauldron.png")
-
-        -- TODO do this for all legendary recipes
-        -- hide specific recipe combos from the recipe book
-        local hidden_recipe = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_book", "recipes_and_tooltip_holder", "recipes_and_tooltip_holder_beholder", "recipes_holder", "recipes_list","CcoCookingRecipeRecordnemeses")
-
-        hidden_recipe:SetVisible(false)
-
-        -- loop through all of the recipe book texts, and set the text to white instead of black
-        -- [ui] <149.0s>   root > queek_cauldron > recipe_book_holder > recipe_book > recipes_and_tooltip_holder > recipes_and_tooltip_holder_beholder > recipes_holder > recipes_list > CcoCookingRecipeRecordrecipe_chaos_undead > dish_name
-        local recipes_list = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_book", "recipes_and_tooltip_holder", "recipes_and_tooltip_holder_beholder", "recipes_holder", "recipes_list")
-
-        if not is_uicomponent(recipes_list) then
-            ModLog("recipes list not found")
-            return
-        end
-
-        ModLog("found recipes_list")
-        for i = 0, recipes_list:ChildCount() -1  do
-            local child = UIComponent(recipes_list:Find(i))
-            ModLog("in loop, grabbing child at: "..tostring(i))
-            if string.find(child:Id(), "CcoCookingRecipeRecord") then
-                ModLog("child is a recipe, id: "..child:Id())
-                local dish_name = UIComponent(child:Find("dish_name"))
-
-                ModLog("dishname!")
-                if not is_uicomponent(dish_name) then
-                    ModLog("dish name unfound!")
-                end
-                
-                -- change the shader from set_greyscale bullshit to the normal_t0
-                dish_name:TextShaderTechniqueSet("normal_t0", true)
-
-                -- local txt = dish_name:GetStateText()
-                -- txt = "[[col:fe_white]]" .. txt .. "[[/col]]"
-
-                -- ModLog("Text is: "..txt)
-
-                -- local start_state = dish_name:CurrentState()
-
-                -- ModLog("current state: "..start_state)
-
-                -- for j = 0, dish_name:NumStates() -1 do
-                --     ModLog("in state: "..tostring(j))
-                --     local state = dish_name:GetStateByIndex(j)
-                --     ModLog("state name: "..state)
-
-                --     dish_name:SetState(state)
-                --     dish_name:SetStateText(txt)
-
-                --     ModLog("State and text!")
-                -- end
-
-                -- dish_name:SetState(start_state)
-            end
-        end
-
-        local slot_holder = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "ingredients_and_effects")
-        local arch = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "arch")
-
-        -- TODO move this into the UI file, fuck it
-
-        -- move the four slots to line up with the pikes
-        local pikes = {
-            [1] = 167,
-            [2] = 251,
-            [3] = 369,
-            [4] = 450
-        }
-
-        local shx, _ = slot_holder:Position()
-        local arx, _ = arch:Position()
-
-        for i,v in ipairs(pikes) do
-            local pike_pos = v
-            local slot = find_uicomponent(slot_holder, "main_ingredient_slot_"..tostring(i))
-            local animated_frame = find_uicomponent(slot_holder, "main_ingredient_slot_"..tostring(i).."_animated_frame")
-
-            local _, sloty = slot:Position()
-            local w,_ = slot:Dimensions()
-
-            local _,animy = animated_frame:Position()
-            local animw,_ = animated_frame:Dimensions()
-
-            -- this is the hard position on the screen where the middleish of the pike is (pike is 8px wide)
-            local end_x = arx + (pike_pos + 4)
-
-            -- grab the offset between the slot holder's position and the end result
-            local slotx = end_x - (w/2)
-            local animx = end_x - (animw/2)
-
-            -- for some reason I'm 14 off, so
-            slotx = slotx - 14
-            animx = animx - 15
-
-            -- move it
-            slot:MoveTo(slotx, sloty)
-            animated_frame:MoveTo(animx, animy)
-        end
-
-        -- move the rows into a predetermined order
-        local category_list = find_uicomponent("queek_cauldron", "left_colum", "ingredients_holder", "ingredient_category_list")
-
-        local ok, err = pcall(function()
-            ModLog("starting add list view")
-            -- add in the listview, bluh
-            local list_view = UIComponent(category_list:CreateComponent("list_view", "ui/vandy_lib/vlist"))
-
-            local list_clip = UIComponent(list_view:Find("list_clip"))
-            local list_box = UIComponent(list_clip:Find("list_box"))
-            local vslider = UIComponent(list_view:Find("vslider"))
-
-            local cw,ch = category_list:Dimensions()
-            cw = cw + 50
-
-            list_view:SetCanResizeHeight(true)
-            list_view:SetCanResizeWidth(true)
-
-            list_clip:SetCanResizeHeight(true)
-            list_clip:SetCanResizeWidth(true)
-
-            list_box:SetCanResizeHeight(true)
-            list_box:SetCanResizeWidth(true)
-
-            list_view:Resize(cw, ch)
-            list_clip:Resize(cw, ch-50)
-
-            list_view:SetCanResizeHeight(false)
-            list_view:SetCanResizeWidth(false)
-            
-            list_clip:SetCanResizeHeight(false)
-            list_clip:SetCanResizeWidth(false)
-
-            -- vslider:SetVisible(true)
-            list_view:SetVisible(true)
-            list_box:SetVisible(true)
-
-            list_view:SetDockingPoint(2)
-            list_clip:SetDockingPoint(0)
-            list_box:SetDockingPoint(0)
-
-            list_view:SetDockOffset(0, 0)
-            list_clip:SetDockOffset(0, 0)
-            list_box:SetDockOffset(0, 0)
-
-            local addresses = {}
-
-            -- the order in which the categories are displayed
-            local id_to_order = {
-                nemeses = 1,
-                underlings = 2,
-                beasts = 3,
-                human = 4,
-                elves = 5,
-                chaos = 6,
-                undead = 7,
-            }
-            
-            for i = 0, category_list:ChildCount() -1 do
-                local child = UIComponent(category_list:Find(i))
-                local id = child:Id()
-                if id ~= "list_view" and id ~= "template_category" then
-                    local key = string.gsub(id, "CcoCookingIngredientGroupRecord", "")
-                    local ind = id_to_order[key]
-
-                    addresses[ind] = child:Address()
-                end
-            end
-
-            for i = 1, #addresses do
-                list_box:Adopt(addresses[i])
-            end
-
-            list_box:Layout()
-            vslider:SetVisible(true)
-
-            do
-                vslider:SetDockingPoint(6)
-                
-                local x,y = vslider:GetDockOffset()
-                vslider:SetDockOffset(80,y)
-            end
-
-            list_box:Resize(cw, ch+150)
-            list_box:SetCanResizeHeight(false)
-            list_box:SetCanResizeWidth(false)
-
-        end) if not ok then ModLog(err) end
-
-        self:ui_refresh()
-
-    end
-
-    local function test_open()
-        -- check every UI tick if the queek cauldron is open - once it is, make the edits
-        -- the following triggers an RealTimeTrigger event with the string "queek_cauldron_test_open" every single UI tick
-        real_timer.register_repeating("queek_cauldron_test_open", 0)
-
-        core:add_listener(
-            "test_if_open",
-            "RealTimeTrigger",
-            function(context)
-                return context.string == "queek_cauldron_test_open" and is_uicomponent(find_uicomponent("queek_cauldron")) and is_uicomponent(find_uicomponent("queek_cauldron", "left_colum", "ingredients_holder", "component_tooltip"))
-            end,
-            function(context)
-                real_timer.unregister("queek_cauldron_test_open")
-
-                opened_up()
-            end,
-            false
-        )
-    end
-
     core:add_listener(
         "queek_button_pressed",
         "ComponentLClickUp",
@@ -2174,18 +1859,324 @@ function headtaking:ui_init()
             return context.string == "queek_headtaking"
         end,
         function(context)
-            local root = core:get_ui_root()
-            local test = find_uicomponent("queek_cauldron")
-            if not is_uicomponent(test) then
-                root:CreateComponent("queek_cauldron", "ui/campaign ui/queek_cauldron_panel")
-
-                test_open()
-                
-                close_listener()
-            end
+            self:open_panel()
         end,
         true
     )
+end
+
+function headtaking:close_panel()
+    local panel = find_uicomponent("queek_cauldron")
+
+    if not is_uicomponent(panel) then
+        return false
+    end
+
+    remove_component(panel)
+
+    -- refresh the header when it's closed!
+    self:ui_refresh_header()
+
+    -- reenable the esc key
+    cm:steal_escape_key(false)
+
+    core:remove_listener("queek_close_panel")
+end
+
+function headtaking:open_panel()
+    local root = core:get_ui_root()
+    local test = find_uicomponent("queek_cauldron")
+    if not is_uicomponent(test) then
+        root:CreateComponent("queek_cauldron", "ui/campaign ui/queek_cauldron_panel")
+
+        repeat_callback(
+            "queek_cauldron_test_open",
+            function(context)
+                return is_uicomponent(find_uicomponent("queek_cauldron")) and is_uicomponent(find_uicomponent("queek_cauldron", "left_colum", "ingredients_holder", "component_tooltip"))
+            end,
+            function(context)
+                real_timer.unregister("queek_cauldron_test_open")
+                core:remove_listener("queek_cauldron_test_open")
+
+                self:panel_opened()
+            end,
+            0
+        )
+    end
+end
+
+
+function headtaking:panel_opened()
+    -- listen for close!
+    core:add_listener(
+        "queek_close_panel",
+        "ComponentLClickUp",
+        function(context)
+            local uic = find_uicomponent("queek_cauldron", "right_colum", "exit_panel_button")
+            if is_uicomponent(uic) then
+                return context.component == uic:Address()
+            end
+            return false
+        end,
+        function(context)
+            self:close_panel()
+        end,
+        false
+    )
+
+    core:add_listener(
+        "queek_close_panel",
+        "ShortcutTriggered",
+        function(context) 
+            return context.string == "escape_menu"
+        end,
+        function(context)
+            self:close_panel()
+        end,
+        false
+    )
+
+    cm:steal_escape_key(true)
+
+    -- move the effect list tt out of the way
+    local effect_list = find_uicomponent("queek_cauldron", "left_colum", "ingredients_holder", "component_tooltip")
+    --[[local lview = find_uicomponent(effect_list, "ingredient_effects", "effects_listview")
+    local lclip = find_uicomponent(lview, "list_clip")
+    local lbox = find_uicomponent(lclip, "list_box")]]
+    local x,y = effect_list:GetDockOffset()
+    local p = effect_list:DockingPoint()
+    --local px, py = core:get_screen_resolution()
+    local fx = x --(px * 0.67) + x
+
+    effect_list:SetDockOffset(fx, y * 1.25)
+    effect_list:SetCanResizeHeight(true)
+    effect_list:Resize(effect_list:Width(), effect_list:Height() *1.45)
+    effect_list:SetCanResizeHeight(false)
+    
+    local tt = find_uicomponent("queek_cauldron", "left_colum", "ingredients_holder", "component_tooltip2")
+    tt:SetDockingPoint(p)
+    tt:SetDockOffset(fx + tt:Width(), y * 1.25)
+    tt:SetCanResizeHeight(true)
+    tt:Resize(tt:Width(), tt:Height() *1.45)
+    tt:SetCanResizeHeight(false)
+
+    -- hide for now :(
+    tt:SetVisible(false)
+    -- remove_component(tt)
+
+    -- change the text on Collected Heads / Collected Legendary Heads
+
+    -- TODO decide if this should be X / Total Heads or X / (Total Heads - Legendaries)
+    -- for now it's just X / Total Heads
+    local heads_num = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "ingredients_progress_holder", "ingredients_progress_number")
+
+    local legendary_num = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "recipes_progress_holder", "recipes_progress_number")
+
+    local str = self:ui_get_num_legendary_heads()
+
+    legendary_num:SetStateText(str)
+
+    -- TODO make this more interesting later on
+    -- set a tooltip on the Queek Trait icon
+    local trait = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "trait")
+    trait:SetTooltipText("Queek's Heads\nCollect more trophy heads to become more powerful!", true)
+
+    -- re-enable the recipe book, luh-mao
+    local recipe_book = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_button_group")
+    recipe_book:SetVisible(true)
+
+    -- replace the button icon
+    local recipes_button = find_uicomponent(recipe_book, "recipes_button")
+    recipes_button:SetImagePath("ui/skins/default/icon_queekcooking_cauldron.png")
+
+    -- TODO do this for all legendary recipes
+    -- hide specific recipe combos from the recipe book
+    local hidden_recipe = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_book", "recipes_and_tooltip_holder", "recipes_and_tooltip_holder_beholder", "recipes_holder", "recipes_list","CcoCookingRecipeRecordnemeses")
+
+    hidden_recipe:SetVisible(false)
+
+    -- loop through all of the recipe book texts, and set the text to white instead of black
+    -- [ui] <149.0s>   root > queek_cauldron > recipe_book_holder > recipe_book > recipes_and_tooltip_holder > recipes_and_tooltip_holder_beholder > recipes_holder > recipes_list > CcoCookingRecipeRecordrecipe_chaos_undead > dish_name
+    local recipes_list = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_book", "recipes_and_tooltip_holder", "recipes_and_tooltip_holder_beholder", "recipes_holder", "recipes_list")
+
+    if not is_uicomponent(recipes_list) then
+        ModLog("recipes list not found")
+        return
+    end
+
+    ModLog("found recipes_list")
+    for i = 0, recipes_list:ChildCount() -1  do
+        local child = UIComponent(recipes_list:Find(i))
+        ModLog("in loop, grabbing child at: "..tostring(i))
+        if string.find(child:Id(), "CcoCookingRecipeRecord") then
+            ModLog("child is a recipe, id: "..child:Id())
+            local dish_name = UIComponent(child:Find("dish_name"))
+
+            ModLog("dishname!")
+            if not is_uicomponent(dish_name) then
+                ModLog("dish name unfound!")
+            end
+            
+            -- change the shader from set_greyscale bullshit to the normal_t0
+            dish_name:TextShaderTechniqueSet("normal_t0", true)
+
+            -- local txt = dish_name:GetStateText()
+            -- txt = "[[col:fe_white]]" .. txt .. "[[/col]]"
+
+            -- ModLog("Text is: "..txt)
+
+            -- local start_state = dish_name:CurrentState()
+
+            -- ModLog("current state: "..start_state)
+
+            -- for j = 0, dish_name:NumStates() -1 do
+            --     ModLog("in state: "..tostring(j))
+            --     local state = dish_name:GetStateByIndex(j)
+            --     ModLog("state name: "..state)
+
+            --     dish_name:SetState(state)
+            --     dish_name:SetStateText(txt)
+
+            --     ModLog("State and text!")
+            -- end
+
+            -- dish_name:SetState(start_state)
+        end
+    end
+
+    local slot_holder = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "ingredients_and_effects")
+    local arch = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "arch")
+
+    -- TODO move this into the UI file, fuck it
+
+    -- move the four slots to line up with the pikes
+    local pikes = {
+        [1] = 167,
+        [2] = 251,
+        [3] = 369,
+        [4] = 450
+    }
+
+    local shx, _ = slot_holder:Position()
+    local arx, _ = arch:Position()
+
+    for i,v in ipairs(pikes) do
+        local pike_pos = v
+        local slot = find_uicomponent(slot_holder, "main_ingredient_slot_"..tostring(i))
+        local animated_frame = find_uicomponent(slot_holder, "main_ingredient_slot_"..tostring(i).."_animated_frame")
+
+        local _, sloty = slot:Position()
+        local w,_ = slot:Dimensions()
+
+        local _,animy = animated_frame:Position()
+        local animw,_ = animated_frame:Dimensions()
+
+        -- this is the hard position on the screen where the middleish of the pike is (pike is 8px wide)
+        local end_x = arx + (pike_pos + 4)
+
+        -- grab the offset between the slot holder's position and the end result
+        local slotx = end_x - (w/2)
+        local animx = end_x - (animw/2)
+
+        -- for some reason I'm 14 off, so
+        slotx = slotx - 14
+        animx = animx - 15
+
+        -- move it
+        slot:MoveTo(slotx, sloty)
+        animated_frame:MoveTo(animx, animy)
+    end
+
+    -- move the rows into a predetermined order
+    local category_list = find_uicomponent("queek_cauldron", "left_colum", "ingredients_holder", "ingredient_category_list")
+
+    local ok, err = pcall(function()
+        ModLog("starting add list view")
+        -- add in the listview, bluh
+        local list_view = UIComponent(category_list:CreateComponent("list_view", "ui/vandy_lib/vlist"))
+
+        local list_clip = UIComponent(list_view:Find("list_clip"))
+        local list_box = UIComponent(list_clip:Find("list_box"))
+        local vslider = UIComponent(list_view:Find("vslider"))
+
+        local cw,ch = category_list:Dimensions()
+        cw = cw + 50
+
+        list_view:SetCanResizeHeight(true)
+        list_view:SetCanResizeWidth(true)
+
+        list_clip:SetCanResizeHeight(true)
+        list_clip:SetCanResizeWidth(true)
+
+        list_box:SetCanResizeHeight(true)
+        list_box:SetCanResizeWidth(true)
+
+        list_view:Resize(cw, ch)
+        list_clip:Resize(cw, ch-50)
+
+        list_view:SetCanResizeHeight(false)
+        list_view:SetCanResizeWidth(false)
+        
+        list_clip:SetCanResizeHeight(false)
+        list_clip:SetCanResizeWidth(false)
+
+        -- vslider:SetVisible(true)
+        list_view:SetVisible(true)
+        list_box:SetVisible(true)
+
+        list_view:SetDockingPoint(2)
+        list_clip:SetDockingPoint(0)
+        list_box:SetDockingPoint(0)
+
+        list_view:SetDockOffset(0, 0)
+        list_clip:SetDockOffset(0, 0)
+        list_box:SetDockOffset(0, 0)
+
+        local addresses = {}
+
+        -- the order in which the categories are displayed
+        local id_to_order = {
+            nemeses = 1,
+            underlings = 2,
+            beasts = 3,
+            human = 4,
+            elves = 5,
+            chaos = 6,
+            undead = 7,
+        }
+        
+        for i = 0, category_list:ChildCount() -1 do
+            local child = UIComponent(category_list:Find(i))
+            local id = child:Id()
+            if id ~= "list_view" and id ~= "template_category" then
+                local key = string.gsub(id, "CcoCookingIngredientGroupRecord", "")
+                local ind = id_to_order[key]
+
+                addresses[ind] = child:Address()
+            end
+        end
+
+        for i = 1, #addresses do
+            list_box:Adopt(addresses[i])
+        end
+
+        list_box:Layout()
+        vslider:SetVisible(true)
+
+        do
+            vslider:SetDockingPoint(6)
+            
+            local x,y = vslider:GetDockOffset()
+            vslider:SetDockOffset(80,y)
+        end
+
+        list_box:Resize(cw, ch+150)
+        list_box:SetCanResizeHeight(false)
+        list_box:SetCanResizeWidth(false)
+
+    end) if not ok then ModLog(err) end
+
+    self:ui_refresh()
 end
 
 core:add_static_object("headtaking", headtaking)
