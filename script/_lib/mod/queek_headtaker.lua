@@ -58,22 +58,22 @@ local headtaking = {
 
 local function timed_callback(key, condition, callback, time)
     if not is_string(key) then
-        -- errmsg
+        ModLog("timed_callback called, key isn't a string: ".. tostring(key))
         return false
     end
 
-    if not is_function(condition) or not condition == true then
-        -- errmsg
+    if not is_function(condition) and condition ~= true then
+        ModLog("timed_callback called, condition isn't a function or true: "..tostring(condition))
         return false
     end
 
     if not is_function(callback) then
-        -- errmsg
+        ModLog("timed_callback called, callback isn't a function: "..tostring(callback))
         return false
     end
 
     if not is_number(time) then
-        -- errmsg
+        ModLog("timed_callback called, time isn't a number: "..tostring(time))
         return false
     end
     
@@ -81,7 +81,7 @@ local function timed_callback(key, condition, callback, time)
         key,
         "RealTimeTrigger",
         function(context)
-            return context.string == key and condition(context)
+            return context.string == key and (condition == true or condition(context) == true)
         end,
         function(context)
             callback(context)
@@ -1374,8 +1374,16 @@ function headtaking:init()
                 end
             end
 
+            -- do this 50ms later, for new states and what not
             -- refresh the UI for any necessary changes
-            self:ui_refresh()
+            timed_callback(
+                "ui_refresh",
+                true,
+                function()
+                    self:ui_refresh()
+                end,
+                50
+            )
         end,
         true
     )
@@ -1445,66 +1453,7 @@ function headtaking:ui_refresh()
         local ok, err = pcall(function()
             self:set_head_counters()
 
-            -- change all duration references within the UI --
-            local duration = self:get_duration_of_current_dish()
-
-            if not duration then
-                -- errmsg (? or do nothing because there's no active dish?)
-                return false
-            end
-
-            -- "Effects Duration" within the Recipe Book
-            -- [ui] <84.9s>    root > queek_cauldron > recipe_book_holder > recipe_book > recipes_and_tooltip_holder > recipes_and_tooltip_holder_beholder > dish_tooltip > tooltip_holder > duration
-            do
-                local duration_uic = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_book", "recipes_and_tooltip_holder", "recipes_and_tooltip_holder_beholder", "dish_tooltip", "tooltip_holder", "duration")
-                
-                -- TODO change the duration based on selected
-                duration_uic:SetStateText("For 1000000 Turns TODO THIS")
-            end
-
-            -- "Effects Duration" within dish preview
-            do
-                local duration_uic = find_uicomponent("queek_cauldron", "right_colum", "dish_effects_holder", "dish_effects", "duration")
-
-                -- TODO change the duration based on the recipe displayed
-                duration_uic:SetStateText("For 10000 Turns TODO THIS")
-            end
-
-            -- duration banner in current_dish
-            local timer = find_uicomponent("queek_cauldron", "right_colum", "dish_preview_holder", "current_dish_effect", "current_dish_effect_timer_holder", "grom_dish_effect_timer")
-            timer:SetStateText(duration)
-
-            -- "Effects last for" in current_dish tooltip
-            core:remove_listener("headtaking_duration_panel")
-
-            core:add_listener(
-                "headtaking_duration_panel",
-                "ComponentMouseOn",
-                function(context)
-                    return context.string == "current_dish_effect" and cm:get_local_faction_name(true) == self.faction_key
-                end,
-                function(context)
-                    repeat_callback(
-                        "check_tt_header", 
-                        function(context)
-                            return is_uicomponent(find_uicomponent("tooltip_trophy_rack")) 
-                        end,
-                        function(context)
-                            local tt = find_uicomponent("tooltip_trophy_rack")
-
-                            local timer = find_uicomponent(tt, "active_dish", "timer_text")
-        
-                            local txt = string.format("Effects last for %d turns", duration)
-        
-                            timer:SetStateText(txt)
-
-                            real_timer.unregister("check_tt_header")
-                        end,
-                        1
-                    )
-                end,
-                true
-            )
+            self:check_duration_in_ui()
 
         end) if not ok then ModLog(err) end
     end
@@ -1515,6 +1464,11 @@ function headtaking:ui_refresh_header()
     -- check & change the duration
 
     local header = find_uicomponent("layout", "resources_bar", "topbar_list_parent", "queek_headtaking")
+
+    if not is_uicomponent(header) then
+        ModLog("Headtaking Header doesn't exist rn, yo!")
+        return false
+    end
 
     local duration_banner = find_uicomponent(header, "grom_dish_effect", "grom_dish_effect_number_holder", "grom_dish_effect_number")
 
@@ -1560,6 +1514,140 @@ function headtaking:ui_refresh_header()
     )
 end
 
+-- check in the UI for the two "Effects last X turns" text blurbs being visible
+function headtaking:poll_duration_in_ui()
+    local function kill()
+        real_timer.unregister("poll_in_ui")
+        core:remove_listener("poll_in_ui")
+    end
+
+    -- make sure the polling isn't doubled up!
+    kill()
+
+    -- repeat these functions every 25ms
+    local looper = 25
+
+    repeat_callback(
+        "poll_in_ui",
+        function(context)
+            local duration_uic_book = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_book", "recipes_and_tooltip_holder", "recipes_and_tooltip_holder_beholder", "dish_tooltip", "tooltip_holder", "duration")
+            local duration_uic_preview = find_uicomponent("queek_cauldron", "right_colum", "dish_effects_holder", "dish_effects", "duration")
+
+            -- if both duration UIC's are off the screen, kill the polling
+            if not is_uicomponent(duration_uic_book) and not is_uicomponent(duration_uic_preview) then
+                kill()
+
+                return false
+            end
+
+            if duration_uic_book:Visible() or duration_uic_preview:Visible() then
+                return true
+            end
+        end,
+        function(context)
+            local duration_uic_book = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_book", "recipes_and_tooltip_holder", "recipes_and_tooltip_holder_beholder", "dish_tooltip", "tooltip_holder", "duration")
+            local duration_uic_preview = find_uicomponent("queek_cauldron", "right_colum", "dish_effects_holder", "dish_effects", "duration")
+
+            if duration_uic_book:Visible() then
+                -- check if the state text contains 15; if it does, change it
+                local text = duration_uic_book:GetStateText()
+
+                if string.find(text, "15") then
+                    -- TODO vvvvv make sure this doesn't fuck up if Legendary recipes are unhidden later on!
+                    -- assume that it's 5 turns, since Legendary recipes are hidden
+                    text = string.gsub(text, "15", "5")
+
+                    duration_uic_book:SetStateText(text)
+                end
+            end
+
+            if duration_uic_preview:Visible() then
+                local text = duration_uic_preview:GetStateText()
+
+                if string.find(text, "15") then
+                    -- TODO check the ingredient types to see if this is Legendary
+
+                    -- for now, hard code that it's 5 turns, as well
+                    text = string.gsub(text, "15", "5")
+
+                    duration_uic_preview:SetStateText(text)
+                end
+            end
+        end,
+        looper
+    )
+end
+
+-- change all duration references within the UI
+function headtaking:check_duration_in_ui()
+    -- establish polling within the UI for the "Effects last X turns" text blurbs
+    self:poll_duration_in_ui()
+
+    -- change all duration references within the UI, 
+    local duration = self:get_duration_of_current_dish()
+
+    if not duration then
+        -- errmsg (? or do nothing because there's no active dish?)
+
+        return false
+    end
+
+    -- "Effects Duration" within the Recipe Book
+    do
+        local duration_uic = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_book", "recipes_and_tooltip_holder", "recipes_and_tooltip_holder_beholder", "dish_tooltip", "tooltip_holder", "duration")
+        
+        local txt = duration_uic:GetStateText()
+        txt = string.gsub(txt, "15", "5")
+
+        duration_uic:SetStateText(txt)
+    end
+
+    -- "Effects Duration" within dish preview
+    do
+        local duration_uic = find_uicomponent("queek_cauldron", "right_colum", "dish_effects_holder", "dish_effects", "duration")
+
+        local txt = duration_uic:GetStateText()
+        txt = string.gsub(txt, "15", "5")
+
+        duration_uic:SetStateText(txt)
+    end
+
+    -- duration banner in current_dish
+    local timer = find_uicomponent("queek_cauldron", "right_colum", "dish_preview_holder", "current_dish_effect", "current_dish_effect_timer_holder", "grom_dish_effect_timer")
+    timer:SetStateText(duration)
+
+    -- "Effects last for" in current_dish tooltip
+    core:remove_listener("headtaking_duration_panel")
+
+    core:add_listener(
+        "headtaking_duration_panel",
+        "ComponentMouseOn",
+        function(context)
+            return context.string == "current_dish_effect" and cm:get_local_faction_name(true) == self.faction_key
+        end,
+        function(context)
+            repeat_callback(
+                "check_tt_header", 
+                function(context)
+                    return is_uicomponent(find_uicomponent("tooltip_trophy_rack")) 
+                end,
+                function(context)
+                    local tt = find_uicomponent("tooltip_trophy_rack")
+
+                    local timer = find_uicomponent(tt, "active_dish", "timer_text")
+
+                    local txt = string.format("Effects last for %d turns", duration)
+
+                    timer:SetStateText(txt)
+
+                    real_timer.unregister("check_tt_header")
+                end,
+                1
+            )
+        end,
+        true
+    )
+end
 
 -- this sets the UI for the number of heads and their respective states and opacities
 function headtaking:set_head_counters()
@@ -1592,6 +1680,11 @@ function headtaking:set_head_counters()
                     if not num_label_address then
                         -- create the number-of-heads label
                         num_label = core:get_or_create_component("num_heads", "ui/vandy_lib/number_label", ingredient)
+
+                        -- resize them!
+                        num_label:SetCanResizeWidth(true) num_label:SetCanResizeHeight(true)
+                        num_label:Resize(num_label:Width() /2, num_label:Height() /2)
+                        num_label:SetCanResizeWidth(false) num_label:SetCanResizeHeight(false)
                     else
                         num_label = UIComponent(num_label_address)
                     end
@@ -1600,10 +1693,6 @@ function headtaking:set_head_counters()
                     num_label:SetTooltipText("Number of Heads", true)
                     num_label:SetDockingPoint(3)
                     num_label:SetDockOffset(0, 0)
-    
-                    num_label:SetCanResizeWidth(true) num_label:SetCanResizeHeight(true)
-                    num_label:Resize(num_label:Width() /2, num_label:Height() /2)
-                    num_label:SetCanResizeWidth(false) num_label:SetCanResizeHeight(false)
     
                     num_label:SetVisible(false)
             
@@ -1779,6 +1868,9 @@ function headtaking:ui_init()
 
                 remove_component(panel)
 
+                -- refresh the header when it's closed!
+                self:ui_refresh_header()
+
                 -- reenable the esc key
                 cm:steal_escape_key(false)
 
@@ -1796,6 +1888,9 @@ function headtaking:ui_init()
             function(context)
                 local panel = find_uicomponent("queek_cauldron")
                 remove_component(panel)
+
+                -- refresh the header when it's closed!
+                self:ui_refresh_header()
 
                 -- reenable the esc key
                 cm:steal_escape_key(false)
@@ -1857,11 +1952,64 @@ function headtaking:ui_init()
         local recipe_book = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_button_group")
         recipe_book:SetVisible(true)
 
+        -- replace the button icon
+        local recipes_button = find_uicomponent(recipe_book, "recipes_button")
+        recipes_button:SetImagePath("ui/skins/default/icon_queekcooking_cauldron.png")
+
         -- TODO do this for all legendary recipes
         -- hide specific recipe combos from the recipe book
         local hidden_recipe = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_book", "recipes_and_tooltip_holder", "recipes_and_tooltip_holder_beholder", "recipes_holder", "recipes_list","CcoCookingRecipeRecordnemeses")
 
         hidden_recipe:SetVisible(false)
+
+        -- loop through all of the recipe book texts, and set the text to white instead of black
+        -- [ui] <149.0s>   root > queek_cauldron > recipe_book_holder > recipe_book > recipes_and_tooltip_holder > recipes_and_tooltip_holder_beholder > recipes_holder > recipes_list > CcoCookingRecipeRecordrecipe_chaos_undead > dish_name
+        local recipes_list = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_book", "recipes_and_tooltip_holder", "recipes_and_tooltip_holder_beholder", "recipes_holder", "recipes_list")
+
+        if not is_uicomponent(recipes_list) then
+            ModLog("recipes list not found")
+            return
+        end
+
+        ModLog("found recipes_list")
+        for i = 0, recipes_list:ChildCount() -1  do
+            local child = UIComponent(recipes_list:Find(i))
+            ModLog("in loop, grabbing child at: "..tostring(i))
+            if string.find(child:Id(), "CcoCookingRecipeRecord") then
+                ModLog("child is a recipe, id: "..child:Id())
+                local dish_name = UIComponent(child:Find("dish_name"))
+
+                ModLog("dishname!")
+                if not is_uicomponent(dish_name) then
+                    ModLog("dish name unfound!")
+                end
+                
+                -- change the shader from set_greyscale bullshit to the normal_t0
+                dish_name:TextShaderTechniqueSet("normal_t0", true)
+
+                -- local txt = dish_name:GetStateText()
+                -- txt = "[[col:fe_white]]" .. txt .. "[[/col]]"
+
+                -- ModLog("Text is: "..txt)
+
+                -- local start_state = dish_name:CurrentState()
+
+                -- ModLog("current state: "..start_state)
+
+                -- for j = 0, dish_name:NumStates() -1 do
+                --     ModLog("in state: "..tostring(j))
+                --     local state = dish_name:GetStateByIndex(j)
+                --     ModLog("state name: "..state)
+
+                --     dish_name:SetState(state)
+                --     dish_name:SetStateText(txt)
+
+                --     ModLog("State and text!")
+                -- end
+
+                -- dish_name:SetState(start_state)
+            end
+        end
 
         local slot_holder = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "ingredients_and_effects")
         local arch = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "arch")
