@@ -1166,54 +1166,8 @@ function headtaking:init_valid_heads()
     end
 end
 
--- initialize the mod stuff!
-function headtaking:init()
-    local faction_obj = cm:get_faction(self.faction_key)
-
-    if not faction_obj or faction_obj:is_null_interface() then
-        -- Queek unfound, returning false
-        return false
-    end
-
-    self:init_valid_heads()
-
-    -- set up the self.heads table - it tracks the number of heads available, or if a head is locked
-    if cm:is_new_game() or self.heads == {} then
-        ModLog("setting up fresh heads")
-
-        local faction_cooking_info = cm:model():world():cooking_system():faction_cooking_info(faction_obj)
-        for key, _ in pairs(self.valid_heads) do
-
-            self.heads[key] = {
-                num_heads = 0,
-                history = {},
-            }
-
-            if faction_cooking_info:is_ingredient_unlocked(key) then
-                self.heads[key]["num_heads"] = 1
-            else
-                self.heads[key]["num_heads"] = -1 -- -1 is locked
-            end
-        end
-
-        -- TODO add details manually
-        -- TODO trigger incident with this
-        self:add_head_with_key("generic_head_skaven")
-
-        -- first thing's first, enable using 4 ingredients for a recipe for queeky
-        -- TODO temp disabled secondaries until the unlock mechanic is introduced
-        cm:set_faction_max_primary_cooking_ingredients(faction_obj, 2)
-        cm:set_faction_max_secondary_cooking_ingredients(faction_obj, 0)
-    end
-
-    ModLog("Heads table: "..tostring(self.heads))
-
-    self:init_count_heads()
-    self:squeak_init()
-    self:track_legendary_heads()
-
-    --loyalty_listeners()
-
+function headtaking:initialize_listeners()
+    -- faction start for checking duration & refreshing UI
     core:add_listener(
         "queek_turn_start",
         "FactionTurnStart",
@@ -1281,6 +1235,102 @@ function headtaking:init()
         end,
         true
     )
+
+    local queek_queests = {
+        ["wh2_main_great_vortex_skv_queek_headtaker_warp_shard_armour_stage_6"] = true,
+        ["wh2_main_great_vortex_skv_queek_headtaker_warp_shard_armour_stage_6_mpc"] = true,
+        ["wh2_main_skv_queek_headtaker_warp_shard_armour_stage_6"] = true,
+        ["wh2_main_skv_queek_headtaker_warp_shard_armour_stage_6_mpc"] = true,
+        ["wh2_main_great_vortex_skv_queek_headtaker_dwarfgouger_stage_4"] = true,
+        ["wh2_main_great_vortex_skv_queek_headtaker_dwarfgouger_stage_4_mpc"] = true,
+        ["wh2_main_skv_queek_headtaker_dwarfgouger_stage_4"] = true,
+        ["wh2_main_skv_queek_headtaker_dwarfgouger_stage_4_mpc"] = true,
+    }
+
+    -- listeners for the Queek Quests
+    core:add_listener(
+        "queek_quest_qompleted",
+        "MissionSucceeded",
+        function(context)
+            -- check if it belongs in the list above
+            local mission = context:mission()
+            return queek_queests[mission:mission_record_key()]
+        end,
+        function(context)
+            local key = context:mission():mission_record_key()
+
+            local details = {}
+            local head_key = ""
+
+            details.turn_number = cm:model():turn_number()
+
+            if string.find(key, "dwarfgouger") then
+                details.subtype = "dwf_lord"
+                details.forename = "names_name_2147345846"
+                details.surname = "names_name_2147358994"
+
+                head_key = "generic_head_dwarf_beard"
+            else
+                details.subtype = "wh2_main_skv_warlord"
+                details.forename = "names_name_2147360678"
+                details.surname = "names_name_2147360732"
+
+                head_key = "generic_head_skaven"
+            end
+
+            self:add_head_with_key(head_key, details)
+        end,
+        true
+    )
+end
+
+-- initialize the mod stuff!
+function headtaking:init()
+    local faction_obj = cm:get_faction(self.faction_key)
+
+    if not faction_obj or faction_obj:is_null_interface() then
+        -- Queek unfound, returning false
+        return false
+    end
+
+    self:init_valid_heads()
+
+    -- set up the self.heads table - it tracks the number of heads available, or if a head is locked
+    if cm:is_new_game() or self.heads == {} then
+        ModLog("setting up fresh heads")
+
+        local faction_cooking_info = cm:model():world():cooking_system():faction_cooking_info(faction_obj)
+        for key, _ in pairs(self.valid_heads) do
+
+            self.heads[key] = {
+                num_heads = 0,
+                history = {},
+            }
+
+            if faction_cooking_info:is_ingredient_unlocked(key) then
+                self.heads[key]["num_heads"] = 1
+            else
+                self.heads[key]["num_heads"] = -1 -- -1 is locked
+            end
+        end
+
+        -- TODO add details manually
+        -- TODO trigger incident with this
+        self:add_head_with_key("generic_head_skaven")
+
+        -- first thing's first, enable using 4 ingredients for a recipe for queeky
+        -- TODO temp disabled secondaries until the unlock mechanic is introduced
+        cm:set_faction_max_primary_cooking_ingredients(faction_obj, 2)
+        cm:set_faction_max_secondary_cooking_ingredients(faction_obj, 0)
+    end
+
+    ModLog("Heads table: "..tostring(self.heads))
+
+    self:init_count_heads()
+    self:squeak_init()
+    self:track_legendary_heads()
+
+    self:initialize_listeners()
     
     local scripted_dishes = {
 
@@ -1447,6 +1497,10 @@ end
 
 -- this is called to refresh things like num_heads and the Collected Heads counter and what not
 function headtaking:ui_refresh()
+    if not cm:get_local_faction_name(true) == self.faction_key then
+        return
+    end
+
     self:ui_refresh_header()
 
     if is_uicomponent(find_uicomponent("queek_cauldron")) then
@@ -2019,28 +2073,6 @@ function headtaking:panel_opened()
             
             -- change the shader from set_greyscale bullshit to the normal_t0
             dish_name:TextShaderTechniqueSet("normal_t0", true)
-
-            -- local txt = dish_name:GetStateText()
-            -- txt = "[[col:fe_white]]" .. txt .. "[[/col]]"
-
-            -- ModLog("Text is: "..txt)
-
-            -- local start_state = dish_name:CurrentState()
-
-            -- ModLog("current state: "..start_state)
-
-            -- for j = 0, dish_name:NumStates() -1 do
-            --     ModLog("in state: "..tostring(j))
-            --     local state = dish_name:GetStateByIndex(j)
-            --     ModLog("state name: "..state)
-
-            --     dish_name:SetState(state)
-            --     dish_name:SetStateText(txt)
-
-            --     ModLog("State and text!")
-            -- end
-
-            -- dish_name:SetState(start_state)
         end
     end
 
