@@ -1068,13 +1068,13 @@ function headtaking:squeak_init(new_stage)
         -- Squeak informs about Legendary Heads (name pending!), and continues asking for inane shit
         self:squeak_random_shit()
 
-        -- LL missions are triggered by squeak_upgrade()'s internal listener
+        -- LL missions are triggered within the LL mission setup, actually, so nothing else needs doing here
     elseif stage == 3 then
         -- Squeak upgrades
-        -- Squeak asks of you to conquer K8P finally and settle down, papa
         self:squeak_random_shit()
-
-        -- add in mission to reconquista K8P
+        
+        -- Squeak asks of you to conquer K8P finally and settle down, papa
+        -- TODO add in mission to reconquista K8P
     elseif stage == 4 then
         -- After K8P conquer, Squeak demands of wildly wild shit
         self:squeak_random_shit()
@@ -1236,6 +1236,7 @@ function headtaking:initialize_listeners()
         true
     )
 
+
     local queek_queests = {
         ["wh2_main_great_vortex_skv_queek_headtaker_warp_shard_armour_stage_6"] = true,
         ["wh2_main_great_vortex_skv_queek_headtaker_warp_shard_armour_stage_6_mpc"] = true,
@@ -1282,6 +1283,15 @@ function headtaking:initialize_listeners()
         end,
         true
     )
+end
+
+-- TODO this
+function headtaking:initialize_slot_unlocks()
+    -- listen for 1 Leghead being obtained for the first slot unlock
+
+    -- listen for K8P being occupied in ME for the second slot unlock
+
+    -- listen for Belegar & Skarsnik being trophy head'd for the second slot unlock
 end
 
 -- initialize the mod stuff!
@@ -1331,6 +1341,7 @@ function headtaking:init()
     self:track_legendary_heads()
 
     self:initialize_listeners()
+    self:initialize_slot_unlocks()
     
     local scripted_dishes = {
 
