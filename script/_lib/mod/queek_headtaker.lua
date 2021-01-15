@@ -40,7 +40,7 @@ local headtaking = {
     legendary_missions = require("script/headtaking/legendary_missions"),
     squeak_missions = require("script/headtaking/squeak_missions"),
 
-    chance = 100,
+    chance = 40, -- chance defaults to 40%
     queek_subtype = "wh2_main_skv_queek_headtaker",
     faction_key = "wh2_main_skv_clan_mors",
 
@@ -128,7 +128,85 @@ local function repeat_callback(key, condition, callback, time)
     )
 end
 
-function headtaking:add_head_with_key(head_key, details)
+function headtaking:get_queek()
+    local faction_obj = cm:get_faction(self.faction_key)
+    local queek = faction_obj:faction_leader()
+
+    if not queek:character_subtype(self.queek_subtype) then
+        -- errmsg?????
+        return false
+    end
+
+    return queek
+end
+
+function headtaking:queek_has_ancillary(ancillary_key)
+    local queek = self:get_queek()
+    if not queek then return false end
+
+    return queek:has_ancillary(ancillary_key)
+end
+
+function headtaking:queek_has_skill(skill_key)
+    local queek = self:get_queek()
+    if not queek then return false end
+
+    return queek:has_skill(skill_key)
+end
+
+function headtaking:queek_has_trait(trait_key)
+    local queek = self:get_queek()
+    if not queek then return false end
+
+    return queek:has_trait(trait_key)
+end
+
+function headtaking:get_headtaking_chance(target_character_obj)
+    local chance = self.chance
+
+    -- +20% if Trophy Heads skill is had'd
+    if self:queek_has_skill("wh2_main_skill_skv_trophy_heads_queek") then
+        chance = chance + 20
+    end
+
+    if is_character(target_character_obj) then
+        local faction_obj = target_character_obj:faction()
+        local faction_key = faction_obj:name()
+        local subculture_key = faction_obj:subculture()
+
+        if string.find(subculture_key, "dwf") then
+            -- auto +10% against dwf
+            chance = chance + 10
+
+            -- +15% if Dwarf-Gouger is equipped
+            if self:queek_has_ancillary("wh2_main_anc_weapon_dwarf_gouger") then
+                chance = chance + 15
+            end
+        elseif string.find(subculture_key, "grn") then
+            -- auto +10% against grn
+            chance = chance + 10
+        end
+    end
+
+    return chance
+end
+
+function headtaking:increase_headtaking_chance(plus)
+    if not is_number(plus) then
+        -- errmsg
+        return false
+    end
+
+    local new_val = self.chance + plus
+
+    -- TODO? max ceiling
+    -- for now clamp to 100 max, because lul
+    if new_val >= 100 then new_val = 100 end
+
+    self.chance = new_val
+end
+
+function headtaking:add_head_with_key(head_key, details, skip_event)
     if not is_string(head_key) then
         -- errmsg
         return false
@@ -176,21 +254,23 @@ function headtaking:add_head_with_key(head_key, details)
     ModLog("New total heads counter is: "..tostring(self.total_heads))
     ModLog("New current heads counter is: "..tostring(self.current_heads))
     
-    if faction_obj:is_human() then
-        local loc_prefix = "event_feed_strings_text_yummy_head_unlocked_"
-        cm:show_message_event_located(
-            self.faction_key,
-            loc_prefix.."title",
-            loc_prefix.."primary_detail",
-            loc_prefix.."secondary_detail",
-            queek_obj:logical_position_x(),
-            queek_obj:logical_position_y(),
-            true,
-            666
-        )
+    if not skip_event then
+        if faction_obj:is_human() then
+            local loc_prefix = "event_feed_strings_text_yummy_head_unlocked_"
+            cm:show_message_event_located(
+                self.faction_key,
+                loc_prefix.."title",
+                loc_prefix.."primary_detail",
+                loc_prefix.."secondary_detail",
+                queek_obj:logical_position_x(),
+                queek_obj:logical_position_y(),
+                true,
+                666
+            )
+        end
     end
 
-    core:trigger_custom_event("HeadtakingCollectedHead", {["headtaking"] = self, ["head"] = self.heads[head_key], ["faction_key"] = details.faction_key})
+    core:trigger_custom_event("HeadtakingCollectedHead", {["headtaking"] = self, ["head"] = self.heads[head_key], ["head_key"] = head_key, ["faction_key"] = details.faction_key})
 end
 
 --[[
@@ -516,6 +596,7 @@ function headtaking:squeak_random_shit()
         return
     end
 
+    -- there's not a mission already and it's not the first mission; check if there should be a mission triggered
     core:add_listener(
         "SqueakRandomEvent",
         "FactionTurnStart",
@@ -523,10 +604,8 @@ function headtaking:squeak_random_shit()
             return context:faction():name() == self.faction_key
         end,
         function(context)
-            -- there's not a mission already and it's not the first mission; check if there should be a mission triggered
             local this_turn = cm:model():turn_number()
             local that_turn = self.squeak_mission_info.turns_since_last_mission
-    
 
             local turns_since = this_turn - that_turn
 
@@ -566,15 +645,22 @@ function headtaking:track_legendary_heads()
             local mission = context:mission()
             local mission_key = mission:mission_record_key()
 
-            -- TODO make this work with the auto-gen'd missions
-            -- can do that by, say, looping through all the mission infos, checking mission keys
-            -- try to make it so there's no way to double up on mission keys between different heads
+            local head_key
+            local stage
 
-            -- cut off the "_1" or w/e ending
-            local head_key = string.sub(mission_key, 1, -3)
+            -- check all the mission infos to determine which head this mission is attached to
+            local legendary_mission_infos = self.legendary_mission_info
+            for mission_head_key, mission_info in pairs(legendary_mission_infos) do
+                if mission_info.mission_key == mission_key then
+                    head_key = mission_head_key
+                    stage = mission_info.stage
+                end
+            end
 
-            -- grab just the number, ie. "1"
-            local stage = tonumber(string.sub(mission_key, -1, -1))
+            if not head_key then
+                -- errmsg
+                return false
+            end
 
             local legendary_obj = self.legendary_heads[head_key]
 
@@ -586,8 +672,6 @@ function headtaking:track_legendary_heads()
                 local f = loadstring(mission_obj.end_func)
                 setfenv(f, core:get_env())
                 f(self, head_key)
-
-                -- mission_obj.end_func(self, head_key)
             end
 
             -- reward the head if it's the last mission of this chain
@@ -597,8 +681,13 @@ function headtaking:track_legendary_heads()
                 self:add_head_with_key(head_key)
 
                 core:trigger_custom_event("HeadtakingLegendaryHeadRetrieved", {headtaking=self, head_key=head_key})
+
+                -- clear out legendary mish info?
+                self.legendary_mission_info = {}
+
                 return
             end
+
             -- trigger the next mission
             local next_stage = stage+1
 
@@ -961,9 +1050,8 @@ function headtaking:squeak_upgrade(new_level)
         false
     )
 
-    -- TODO vvvvv
     -- trigger incident for "hey, you got this fucker" / upgrade
-
+    cm:trigger_incident(self.faction_key, "squeak_stage_"..tostring(new_level), true)
 
     self:squeak_init()
 
@@ -1229,7 +1317,9 @@ function headtaking:initialize_listeners()
             -- TODO variable chance here
             local rand = cm:random_number(100, 1)
 
-            if rand <= self.chance then
+            local chance = self:get_headtaking_chance(killed_character)
+
+            if rand <= chance then
                 self:add_head(killed_character, queek)
             end            
         end,
@@ -1285,13 +1375,94 @@ function headtaking:initialize_listeners()
     )
 end
 
--- TODO this
+function headtaking:unlock_slot_at_index(index)
+    if not is_number(index) then
+        -- errmsg
+        return false
+    end
+
+    local slot = self.slots[index]
+
+    if not slot then
+        -- errmsg, this slot doesn't exist
+        return false
+    end
+
+    if slot == "open" then
+        -- errmsg, already opened!
+        return false
+    end
+
+    -- unlock
+    self.slots[index] = "open"
+
+    local faction = cm:get_faction(self.faction_key)
+
+    local cooking_interface = cm:model():world():cooking_system():faction_cooking_info(faction);
+    local current_slots = cooking_interface:max_secondary_ingredients();
+    
+    -- add one more secondary ingredient (on the code side of shit)
+    cm:set_faction_max_secondary_cooking_ingredients(faction, current_slots+1)
+end
+
 function headtaking:initialize_slot_unlocks()
     -- listen for 1 Leghead being obtained for the first slot unlock
+    if self.slots[1] == "locked" then
+        core:add_listener(
+            "headtaking_slot_one",
+            "HeadtakingLegendaryHeadRetrieved",
+            true,
+            function()
+                self:unlock_slot_at_index(1)
+            end,
+            false
+        )
+    end
 
-    -- listen for K8P being occupied in ME for the second slot unlock
+    if self.slots[4] == "locked" then
+        -- listen for K8P being occupied in ME for the second slot unlock
+        if cm:get_campaign_name() == "main_warhammer" then
+            core:add_listener(
+                "headtaking_slot_two",
+                "RegionFactionChangeEvent",
+                function(context)
+                    local region = context:region()
 
-    -- listen for Belegar & Skarsnik being trophy head'd for the second slot unlock
+                    return region:name() == "wh_main_eastern_badlands_karak_eight_peaks" and region:owning_faction():name() == self.faction_key
+                end,
+                function(context)
+                    self:unlock_slot_at_index(4)
+                end,
+                false
+            )
+        else -- listen for Belegar & Skarsnik being trophy head'd for the second slot unlock
+            core:add_listener(
+                "headtaking_slot_two",
+                "HeadtakingCollectedHead",
+                function(context)
+                    local head_key = context:head_key()
+                    return string.find(head_key, "belegar") or string.find(head_key, "skarsnik")
+                end,
+                function()
+                    local faction_obj = cm:get_faction(self.faction_key)
+
+                    local belly = "legendary_head_belegar"
+                    local skars = "legendary_head_skarsnik"
+                    
+                    local faction_cooking_info = cm:model():world():cooking_system():faction_cooking_info(faction_obj)
+                    
+                    -- if both belly and skars were obtained previously, unlock this SLOT
+                    if faction_cooking_info:is_ingredient_unlocked(belly) and
+                    faction_cooking_info:is_ingredient_unlocked(skars) then
+                        self:unlock_slot_at_index(1)
+
+                        core:remove_listener("headtaking_slot_two")
+                    end
+                end,
+                true
+            )
+        end
+    end
 end
 
 -- initialize the mod stuff!
@@ -1326,10 +1497,21 @@ function headtaking:init()
 
         -- TODO add details manually
         -- TODO trigger incident with this
-        self:add_head_with_key("generic_head_skaven")
+        self:add_head_with_key("generic_head_skaven", {}, true)
 
-        -- first thing's first, enable using 4 ingredients for a recipe for queeky
-        -- TODO temp disabled secondaries until the unlock mechanic is introduced
+        local loc_prefix = "event_feed_strings_text_headtaking_intro_"
+
+        -- trigger message about this shit ("hi, this is the mechanic, you have a rat head, enjoy")
+        cm:show_message_event(
+            self.faction_key,
+            loc_prefix.."title",
+            loc_prefix.."primary_detail",
+            loc_prefix.."secondary_detail",
+            true,
+            667
+        )
+
+        -- setup the slots - 2 primary, and 0 secondary (until they're unlocked through play)
         cm:set_faction_max_primary_cooking_ingredients(faction_obj, 2)
         cm:set_faction_max_secondary_cooking_ingredients(faction_obj, 0)
     end
@@ -1829,8 +2011,18 @@ function headtaking:set_head_counters()
                 local slot_item = UIComponent(dummy:Find("slot_item"))
 
                 dummy:SetVisible(true)
-                -- TODO set a tooltip and set a ??? image
-                slot_item:SetTooltipText("Get some heads!", true)
+                
+                local path = effect.get_skinned_image_path("icon_question_mark.png")
+
+                -- greyed out ?
+                slot_item:SetImagePath(path)
+                slot_item:SetCurrentStateImageOpacity(1, 100)
+
+                -- inactive
+                slot_item:SetState("inactive")
+
+                -- set the tooltip on hover
+                slot_item:SetTooltipText("There are remaining Legendary Heads that Queek has yet to hear about - continue your adventures to obtain them.", true)
             end
         end
     end
@@ -1861,6 +2053,11 @@ function headtaking:ui_get_num_legendary_heads()
     return str
 end
 
+-- this has to be made more interesting later on!
+function headtaking:get_queek_trait_tooltip_text()
+    return "Queek Head-taking\nAfter every battle Queek Headtaker participates in, there's a " .. tostring(self:get_headtaking_chance()) .. "% chance that Queek will take the head of any Lord killed in battle.\nThis doesn't apply to Immortal characters, or Wounded characters."
+end
+
 function headtaking:ui_init()
     -- ModLog("ui init")
     local topbar = find_uicomponent(core:get_ui_root(), "layout", "resources_bar", "topbar_list_parent")
@@ -1876,7 +2073,7 @@ function headtaking:ui_init()
         -- TODO set this to something more interesting later on
         -- set the tooltip for the Queek Trait icon
         local trait = find_uicomponent(uic, "trait")
-        trait:SetTooltipText("Queek's Heads\nCollect more trophy heads to become more powerful!", true)
+        trait:SetTooltipText(self:get_queek_trait_tooltip_text(), true)
 
         -- set the total of heads to be "0 / ?" or "1 / 4" or whatever, depending on known heads
         local grom_goals = uic:SequentialFind("grom_goals")
@@ -2044,7 +2241,7 @@ function headtaking:panel_opened()
     -- TODO make this more interesting later on
     -- set a tooltip on the Queek Trait icon
     local trait = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "trait")
-    trait:SetTooltipText("Queek's Heads\nCollect more trophy heads to become more powerful!", true)
+    trait:SetTooltipText(self:get_queek_trait_tooltip_text(), true)
 
     -- re-enable the recipe book, luh-mao
     local recipe_book = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_button_group")
@@ -2244,8 +2441,11 @@ cm:add_loading_game_callback(
     function(context)
         headtaking.heads = cm:load_named_value("headtaking_heads", headtaking.heads, context)
         headtaking.total_heads = cm:load_named_value("headtaking_total_heads", headtaking.total_heads, context)
+        headtaking.slots = cm:load_named_value("headtaking_slots", headtaking.slots, context)
+
         headtaking.squeak_stage = cm:load_named_value("headtaking_squeak_stage", headtaking.squeak_stage, context)
         headtaking.squeak_mission_info = cm:load_named_value("headtaking_squeak_mission_info", headtaking.squeak_mission_info, context)
+
         headtaking.legendary_mission_info = cm:load_named_value("headtaking_legendary_mission_info", headtaking.legendary_mission_info, context)
     end
 )
@@ -2254,8 +2454,11 @@ cm:add_saving_game_callback(
     function(context)
         cm:save_named_value("headtaking_heads", headtaking.heads, context)
         cm:save_named_value("headtaking_total_heads", headtaking.total_heads, context)
+        cm:save_named_value("headtaking_slots", headtaking.slots, context)
+
         cm:save_named_value("headtaking_squeak_stage", headtaking.squeak_stage, context)
         cm:save_named_value("headtaking_squeak_mission_info", headtaking.squeak_mission_info, context)
+
         cm:save_named_value("headtaking_legendary_mission_info", headtaking.legendary_mission_info, context)
     end
 )

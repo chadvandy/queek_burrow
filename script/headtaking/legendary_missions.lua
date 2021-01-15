@@ -164,7 +164,7 @@ return {
                     headtaking.legendary_mission_info[head_key].tracker = 0
                 end
             ]],
-            end_func = noctilus_war_mission,
+            end_func = nil,
             constructor = nil,
         },
         {   -- defeat three armies
