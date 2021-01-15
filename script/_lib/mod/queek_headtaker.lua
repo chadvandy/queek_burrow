@@ -630,6 +630,27 @@ function headtaking:squeak_random_shit()
     )
 end
 
+function headtaking:kill_char_with_cqi(cqi)
+    if not is_number(cqi) then
+        -- errmsg
+        return false
+    end
+
+    core:add_listener(
+        "killed_charrie",
+        "CharacterConvalescedOrKilled",
+        function(context)
+            return cqi == context:character():command_queue_index()
+        end,
+        function(context)
+            cm:stop_character_convalescing(cqi)
+        end,
+        false
+    )
+
+    cm:kill_character(cqi, false, true)
+end
+
 -- this tracks the current LL missions (initialized through Squeak Init if it's over stage 1)
 function headtaking:track_legendary_heads()
     local legendary_heads = self.legendary_heads
@@ -677,8 +698,36 @@ function headtaking:track_legendary_heads()
             -- reward the head if it's the last mission of this chain
             if stage == #mission_chain then
                 -- TODO add details! (somehow???)
-                -- TODO permakill the lord
-                self:add_head_with_key(head_key)
+                local details = {}
+                details.faction_key = legendary_obj.faction_key
+                details.subtype = legendary_obj.subtype_key
+                details.turn_number = cm:model():turn_number()
+
+                -- local details = {
+                --     subtype = subtype_key,
+                --     forename = forename,
+                --     surname = surname,
+                --     flag_path = flag_path,
+                --     faction_key = faction_key,
+                --     level = level,
+                --     region_key = region_key,
+                --     turn_number = turn_number,
+                -- }
+
+                -- permakill the lord
+                do
+                    local faction_key = legendary_obj.faction_key
+                    local faction = cm:get_faction(faction_key)
+
+                    if faction then
+                        local faction_leader = faction:faction_leader()
+                        if faction_leader:character_subtype(legendary_obj.subtype_key) then
+                            self:kill_char_with_cqi(faction_leader:command_queue_index())
+                        end
+                    end
+                end
+
+                self:add_head_with_key(head_key, details)
 
                 core:trigger_custom_event("HeadtakingLegendaryHeadRetrieved", {headtaking=self, head_key=head_key})
 
@@ -945,20 +994,7 @@ function headtaking:trigger_random_legendary_head_mission_at_stage(head_key, sta
             local condition = data.condition[i]
             if string.find(condition, "override_text") then
                 -- changes "legendary_head_1_raid" to "legendary_head_1_raid_legendary_head_belegar", wow that sucks. TODO make this suck less prolly?
-                local str = mission.condition[i]
-                condition = condition .. "_" .. head_key
-
-                ModLog("changed condition: " .. condition)
-
-                
-                -- this prevents the above from FOR SOME FUCKING REASON overwriting the mission table
-                -- TODO this overwrites data.condition, what the FUCK
-                mission.condition[i] = str
-
-                data.condition[i] = condition
-                
-                ModLog("og condition: "..mission.condition[i])
-                ModLog("copied condition: ".. data.condition[i])
+                data.condition[i] = condition .. "_" .. head_key
             end
         end
     end
@@ -1314,7 +1350,6 @@ function headtaking:initialize_listeners()
 
             local queek = queek_faction:faction_leader()
 
-            -- TODO variable chance here
             local rand = cm:random_number(100, 1)
 
             local chance = self:get_headtaking_chance(killed_character)
@@ -1496,7 +1531,6 @@ function headtaking:init()
         end
 
         -- TODO add details manually
-        -- TODO trigger incident with this
         self:add_head_with_key("generic_head_skaven", {}, true)
 
         local loc_prefix = "event_feed_strings_text_headtaking_intro_"
@@ -2251,41 +2285,36 @@ function headtaking:panel_opened()
     local recipes_button = find_uicomponent(recipe_book, "recipes_button")
     recipes_button:SetImagePath("ui/skins/default/icon_queekcooking_cauldron.png")
 
-    -- TODO do this for all legendary recipes
-    -- hide specific recipe combos from the recipe book
-    local hidden_recipe = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_book", "recipes_and_tooltip_holder", "recipes_and_tooltip_holder_beholder", "recipes_holder", "recipes_list","CcoCookingRecipeRecordnemeses")
-
-    hidden_recipe:SetVisible(false)
-
     -- loop through all of the recipe book texts, and set the text to white instead of black
-    -- [ui] <149.0s>   root > queek_cauldron > recipe_book_holder > recipe_book > recipes_and_tooltip_holder > recipes_and_tooltip_holder_beholder > recipes_holder > recipes_list > CcoCookingRecipeRecordrecipe_chaos_undead > dish_name
     local recipes_list = find_uicomponent("queek_cauldron", "recipe_book_holder", "recipe_book", "recipes_and_tooltip_holder", "recipes_and_tooltip_holder_beholder", "recipes_holder", "recipes_list")
 
-    if not is_uicomponent(recipes_list) then
-        ModLog("recipes list not found")
-        return
-    end
-
-    ModLog("found recipes_list")
     for i = 0, recipes_list:ChildCount() -1  do
         local child = UIComponent(recipes_list:Find(i))
-        ModLog("in loop, grabbing child at: "..tostring(i))
-        if string.find(child:Id(), "CcoCookingRecipeRecord") then
-            ModLog("child is a recipe, id: "..child:Id())
-            local dish_name = UIComponent(child:Find("dish_name"))
 
-            ModLog("dishname!")
-            if not is_uicomponent(dish_name) then
-                ModLog("dish name unfound!")
+        local id = child:Id()
+        -- check if it's valid
+        if string.find(id, "CcoCookingRecipeRecord") then
+            -- if it's legendary, just hide the whole recipe
+            if string.find(id, "legendary") then
+                child:SetVisible(false)
+            else
+                local dish_name = UIComponent(child:Find("dish_name"))
+                
+                -- change the shader from set_greyscale bullshit to the normal_t0
+                dish_name:TextShaderTechniqueSet("normal_t0", true)
             end
-            
-            -- change the shader from set_greyscale bullshit to the normal_t0
-            dish_name:TextShaderTechniqueSet("normal_t0", true)
         end
     end
 
     local slot_holder = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "ingredients_and_effects")
     local arch = find_uicomponent("queek_cauldron", "mid_colum", "pot_holder", "arch")
+
+    -- if the fourth slot is locked, and we're in Vortex, change the tooltip text
+    if self.slots[4] == "locked" and cm:get_campaign_name() == "wh2_main_great_vortex" then
+        local fourth_slot = find_uicomponent(slot_holder, "main_ingredient_slot_4")
+
+        fourth_slot:SetTooltipText("Unlock this slot by collecting the heads of the false claimants to Karak Eight Peaks.", true)
+    end
 
     -- TODO move this into the UI file, fuck it
 

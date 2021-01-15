@@ -1,6 +1,7 @@
 return {
     legendary_head_belegar = {
         faction_key = "wh_main_dwf_karak_izor",
+        subtype_key = "dlc06_dwf_belegar",
         prerequisite = {
             name = "BelegarUnlocked",
             event_name = "HeadtakingSqueakUpgrade",
@@ -92,6 +93,7 @@ return {
     },
     legendary_head_skarsnik = {
         faction_key = "wh_main_grn_crooked_moon",
+        subtype_key = "dlc06_grn_skarsnik",
         prerequisite = {
             name = "SkarsnikUnlocked",
             event_name = "HeadtakingSqueakUpgrade",
@@ -114,6 +116,7 @@ return {
     },
     legendary_head_tretch = {
         faction_key = "wh2_dlc09_skv_clan_rictus",
+        subtype_key = "wh2_dlc09_skv_tretch_craventail",
         prerequisite = {
             name = "TretchUnlocked",
             event_name = "HeadtakingSqueakUpgrade",
