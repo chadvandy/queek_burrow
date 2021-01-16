@@ -753,13 +753,14 @@ function headtaking:generate_leghead_force(head_key)
     if num_units < 10 then num_units = 10 end
 
     -- take the turn number and change it into a value between 1-10 (for the "power" bit in the random army manager)
-    -- assumes 1 is turn 1 and assumes 10 is turn ~110
+    -- assumes 1 is turn 1 and assumes 10 is turn >140
+    -- turn 140 is taken from the chaos invasion full inv
     local function normalize_power_for_turn_number()
         local val = cm:model():turn_number()
 
-        -- the OG values to clamp between (ie. scale numbers equally between 1-110 for the normalization)
+        -- the OG values to clamp between (ie. scale numbers equally between 1-140 for the normalization)
         local pre_min = 1
-        local pre_max = 110
+        local pre_max = 140
 
         -- the printed values to clamp between (ie. result is between 1-10)
         local new_min = 1
@@ -767,7 +768,7 @@ function headtaking:generate_leghead_force(head_key)
 
         local new_val = math.ceil(new_min + (val - pre_min) * (new_max - new_min) / (pre_max - pre_min))
 
-        -- clamp, in case the turn number is greater than 110
+        -- clamp, in case the turn number is greater than 140
         if new_val > new_max then new_val = new_max end
         if new_val < new_min then new_val = new_min end
 
