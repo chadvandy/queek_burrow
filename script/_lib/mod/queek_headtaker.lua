@@ -38,6 +38,7 @@ local headtaking = {
 
     -- data-ified missions for legendary heads and squeak stages
     legendary_missions = require("script/headtaking/legendary_missions"),
+    legendary_encounters =require("script/headtaking/legendary_encounters"),
     squeak_missions = require("script/headtaking/squeak_missions"),
 
     chance = 40, -- chance defaults to 40%
@@ -206,13 +207,28 @@ function headtaking:increase_headtaking_chance(plus)
     self.chance = new_val
 end
 
+-- debug to add every head!
+function headtaking:add_all_heads()
+    for head_key,_ in pairs(self.valid_heads) do
+        self:add_head_with_key(head_key)
+    end
+
+    for head_key,_ in pairs(self.legendary_heads) do
+        self:add_head_with_key(head_key)
+    end
+end
+
 function headtaking:add_head_with_key(head_key, details, skip_event)
     if not is_string(head_key) then
         -- errmsg
         return false
     end
 
-    -- TODO test that it's a valid head
+    -- test that it's a valid head!
+    if not self.valid_heads[head_key] and not self.legendary_heads[head_key] then
+        -- errmsg
+        return false
+    end
 
     ModLog("adding head with key "..head_key)
 
@@ -651,6 +667,123 @@ function headtaking:kill_char_with_cqi(cqi)
     cm:kill_character(cqi, false, true)
 end
 
+function headtaking:set_legendary_head_mission_info_to_new_stage(head_key, stage_num)
+    if not is_string(head_key) then
+        -- errmsg
+        return false
+    end
+
+    if not is_number(stage_num) then
+        -- errmsg
+        return false
+    end
+
+    local mission_info = self.legendary_mission_info[head_key]
+    if not mission_info then
+        -- errmsg
+        return false
+    end
+
+    mission_info.mission_key = ""
+    mission_info.tracker = nil
+    mission_info.stage = stage_num
+
+    self:trigger_legendary_head_mission(head_key, stage_num)
+end
+
+function headtaking:get_faction_key_for_legendary_head(head_key)
+    if not is_string(head_key) then
+        -- errmsg
+        return false, false
+    end
+    
+    local legendary_obj = self.legendary_heads[head_key]
+    if not legendary_obj then
+        -- errmsg
+        return false, false
+    end
+
+    local is_qb = false
+    
+    local faction_key = legendary_obj.faction_key
+    local faction_obj = cm:get_faction(faction_key)
+    if not faction_obj or faction_obj:is_dead() then
+        faction_key = legendary_obj.backup_faction_key
+        faction_obj = cm:get_faction(faction_key)
+        is_qb = true
+        if not faction_obj then
+            -- errmsg, none found
+            return false, false
+        end
+    end
+
+    return faction_key, is_qb
+end
+
+function headtaking:generate_leghead_force(head_key)
+    if not is_string(head_key) then
+        -- errmsg
+        return false
+    end
+
+    local encounter_tab = self.legendary_encounters[head_key]
+    if not encounter_tab then
+        -- errmsg
+        return false
+    end
+
+    -- TODO, in the future use better and more personalized armies. For now, just fucking take the vanilla templates from the random army manager
+    -- local force = random_army_manager:new_force(head_key)
+
+    -- local mandatory = encounter_tab["mandatory"]
+    -- local random = encounter_tab["random"]
+
+    local template_key = "wh_main_sc_dwf_dwarfs"
+
+    if head_key == "legendary_head_skarsnik" then
+        template_key = "wh_main_sc_grn_greenskins"
+    elseif head_key == "legendary_head_tretch" then
+        template_key = "wh2_main_sc_skv_skaven"
+    end
+
+    local num_units = self:get_queek():military_force():unit_list():num_items()
+    num_units = cm:random_number(num_units+5, num_units-5)
+
+    if num_units > 20 then num_units = 20 end
+    if num_units < 10 then num_units = 10 end
+
+    -- take the turn number and change it into a value between 1-10 (for the "power" bit in the random army manager)
+    -- assumes 1 is turn 1 and assumes 10 is turn ~110
+    local function normalize_power_for_turn_number()
+        local val = cm:model():turn_number()
+
+        -- the OG values to clamp between (ie. scale numbers equally between 1-110 for the normalization)
+        local pre_min = 1
+        local pre_max = 110
+
+        -- the printed values to clamp between (ie. result is between 1-10)
+        local new_min = 1
+        local new_max = 10
+
+        local new_val = math.ceil(new_min + (val - pre_min) * (new_max - new_min) / (pre_max - pre_min))
+
+        -- clamp, in case the turn number is greater than 110
+        if new_val > new_max then new_val = new_max end
+        if new_val < new_min then new_val = new_min end
+
+        return new_val
+    end
+
+    local power = normalize_power_for_turn_number()
+
+    ModLog("Generating force for "..head_key..", with template_key ["..template_key.."], num_units ["
+    ..num_units.."], and power ["..power.."].")
+
+    local force_list = WH_Random_Army_Generator:generate_random_army(head_key.."_encounter", template_key, num_units, power, false, false)
+
+    return force_list
+end
+
 -- this tracks the current LL missions (initialized through Squeak Init if it's over stage 1)
 function headtaking:track_legendary_heads()
     local legendary_heads = self.legendary_heads
@@ -716,10 +849,11 @@ function headtaking:track_legendary_heads()
 
                 -- permakill the lord
                 do
-                    local faction_key = legendary_obj.faction_key
-                    local faction = cm:get_faction(faction_key)
+                        
+                    local faction_key = self:get_faction_key_for_legendary_head(head_key)
+                    if faction_key then
+                        local faction = cm:get_faction(faction_key)
 
-                    if faction then
                         local faction_leader = faction:faction_leader()
                         if faction_leader:character_subtype(legendary_obj.subtype_key) then
                             self:kill_char_with_cqi(faction_leader:command_queue_index())
@@ -749,22 +883,18 @@ function headtaking:track_legendary_heads()
             -- trigger the next mission
             local next_stage = stage+1
 
-            self.legendary_mission_info[head_key].mission_key = ""
-            self.legendary_mission_info[head_key].tracker = nil
-            self.legendary_mission_info[head_key].stage = next_stage
-
-            self:trigger_legendary_head_mission(head_key, next_stage)
+            self:set_legendary_head_mission_info_to_new_stage(head_key, next_stage)
         end,
         true
     )
 
-    local function get_head_key_from_area_key(area_info)
-        -- these are actually both the same
-        local marker_key = area_info.marker_ref
-        local area_key = area_info.instance_ref
+    local function get_head_key_from_encounter_key(encounter_key)
+        if not is_string(encounter_key) then
+            return ""
+        end
 
         -- remove the "_encounter" suffix on the marker keys, to return the head key
-        return string.gsub(marker_key, "_encounter", "")
+        return string.gsub(encounter_key, "_encounter", "")
     end
 
     -- check interaction with any Legendary Head encounters
@@ -775,12 +905,125 @@ function headtaking:track_legendary_heads()
             return context:character():character_subtype(self.queek_subtype)
         end,
         function(context)
-            local head_key = get_head_key_from_area_key(context:table_data())
+            ModLog("Queek interacted with the leghead encounter")
+            local head_key = get_head_key_from_encounter_key(context:table_data().marker_ref)
+            ModLog("Head key: "..head_key)
+            local head_info = self.legendary_heads[head_key]
 
-            -- TODO spawn a force for this faction (Forced_Battle_Manager)
+            cm:callback(function()
+                -- grab the faction key (backup for factions that don't exist on Vor)
+                local faction_key = self:get_faction_key_for_legendary_head(head_key)
+                if not faction_key then
+                    ModLog("no faction found, in real or backup!")
+                    return false
+                end
+
+                ModLog("Spawning force for faction: " .. faction_key)
+
+                local ok, err = pcall(function()
+
+                -- grab the subtype key of the lord
+                local subtype_key = head_info.subtype_key
+                local forename_key = head_info.forename_key
+                local surname_key = head_info.surname_key
+                
+                -- spawn the general at Queek's level!
+                local queek = context:character()
+                local level = queek:rank()
+
+                -- we know that queek has a military force since queek is the character who is here
+                local mf_cqi = queek:military_force():command_queue_index()
+
+                local force_key = head_key.."_encounter"
+                local force_list = self:generate_leghead_force(head_key)
+
+                -- spawn a force for this faction (Forced_Battle_Manager)
+                local fb = Forced_Battle_Manager:setup_new_battle(force_key)
+                fb:add_new_force(force_key, force_list, faction_key, true, nil, subtype_key, level)
+                fb:set_names_for_force(force_key, forename_key, surname_key)
+
+                -- set a couple events to trigger, if Queeker wins or Queeker loses
+                fb:set_post_battle_script_event("HeadtakingLegendaryHeadBattleWon", "defender_victory")
+                fb:set_post_battle_script_event("HeadtakingLegendaryHeadBattleLost", "attacker_victory")
+
+                local x,y = queek:logical_position_x(), queek:logical_position_y()
+                local ox,oy = x,y
+
+                -- local num_done = 0
+
+                -- local function find_location()
+                --     num_done = num_done + 1
+                --     ModLog("finding location, loop "..num_done)
+
+                --     if num_done >= 15 then
+                --         ModLog("max loop, returning "..ox.." "..oy)
+                --         return ox,oy
+                --     end
+
+                --     local ix,iy = x,y
+
+                --     x,y = cm:find_valid_spawn_location_for_character_from_position(
+                --         faction_key,
+                --         x,
+                --         y,
+                --         true
+                --     )
+
+                --     ModLog("Found ("..x..", "..y..")")
+
+                --     if x == -1 then
+                --         ModLog("Invalid, trying again")
+                --         x = ix + cm:random_number(2, -2)
+                --         y = iy + cm:random_number(2, -2)
+                --         ModLog("Passing forward ("..x..", "..y..")")
+                --         return find_location()
+                --     end
+
+                --     return x,y
+                -- end
+
+                -- local new_x,new_y = find_location()
+            
+                -- spawn above force to attack Queek
+                fb:trigger_battle(force_key, mf_cqi, ox, oy, false, true)
+
+                end) if not ok then ModLog(err) end
+            end, 0.5)
         end,
         true
     )
+
+    -- triggered if the encounter is timed out or if the encounter battle is lost
+    -- lose the active mission; allow the vanilla LL to respawn; return to the first mission in the chain
+    local function you_failed(head_key)
+        local head_obj = self.legendary_heads[head_key]
+        if not head_obj then
+            -- errmsg
+            return false
+        end
+        
+        local mission_info = self.legendary_mission_info[head_key]
+        local mission_key = mission_info.mission_key
+
+        -- fail the mission
+        cm:complete_scripted_mission_objective(mission_key, mission_key, false)
+
+        -- respawn the vanilla lord, if there be one
+        local faction_key, is_qb = self:get_faction_key_for_legendary_head(head_key)
+        if faction_key and not is_qb then
+            local faction_obj = cm:get_faction(faction_key)
+            local faction_leader = faction_obj:faction_leader()
+
+            if not faction_leader:is_null_interface() then
+                cm:stop_character_convalescing(faction_leader:command_queue_index())
+            end
+        end
+
+        -- TODO trigger a message event to inform the player of their absolute fuck up
+
+        -- start the first mission once more
+        self:set_legendary_head_mission_info_to_new_stage(head_key, 1)
+    end
 
     -- check if a Leghead encounter has timed out - if it has, return to square 1 for this chain
     core:add_listener(
@@ -788,9 +1031,54 @@ function headtaking:track_legendary_heads()
         "HeadtakingLegendaryEncounterTimeout",
         true,
         function(context)
-            local head_key = get_head_key_from_area_key(context:table_data())
+            local head_key = get_head_key_from_encounter_key(context:table_data().area_key)
 
-            -- TODO cancel the active mission here and return to the first step!
+            -- cancel the active mission here and return to the first step!
+            you_failed(head_key)
+        end,
+        true
+    )
+
+    -- check if a Leghead encounter was lost - ditto, return to square 0
+    core:add_listener(
+        "HeadtakingLegendaryHeadBattleLost",
+        "HeadtakingLegendaryHeadBattleLost",
+        true,
+        function(context)
+            ModLog("Headtaking Legendary Head Battle Lost")
+            local encounter_key = context:forced_battle_key()
+            local head_key = get_head_key_from_encounter_key(encounter_key)
+
+            -- cancel the active mission here and return to the first step
+            you_failed(head_key)
+
+            -- destroy the invasion
+            local inv = invasion_manager:get_invasion(encounter_key)
+            if inv then
+                ModLog("Inv found")
+                inv:kill()
+                ModLog("Killed")
+                invasion_manager:remove_invasion(encounter_key)
+                ModLog("Removed")
+            end
+
+            
+        end,
+        true
+    )
+
+    -- check if the battle was won! Win the mission and do other stuff.
+    core:add_listener(
+        "HeadtakingLegendaryHeadBattleWon",
+        "HeadtakingLegendaryHeadBattleWon",
+        true,
+        function(context)
+            ModLog("HeadtakingLegendaryHeadBattleWon")
+            local encounter_key = context:forced_battle_key(0)
+            -- local head_key = get_head_key_from_encounter_key(encounter_key)
+
+            -- win the mission! The rest of the stuff is handled elsewhere
+            cm:complete_scripted_mission_objective(encounter_key, encounter_key, true)
         end,
         true
     )
@@ -801,34 +1089,43 @@ function headtaking:track_legendary_heads()
         -- initalize the mission_info table if it hasn't been yet
         if not self.legendary_mission_info[head_key] then self.legendary_mission_info[head_key] = {stage=0, mission_key = "", tracker = nil} end
 
-        local mission_info = self.legendary_mission_info[head_key]
+        -- if the relevant targeted faction is a human, cancel this shit
+        local faction_key = self:get_faction_key_for_legendary_head(head_key)
+        if faction_key then
+            local faction_obj = cm:get_faction(faction_key)
 
-        -- if it's the pre-stage (0), then initialize the pre-requisite listener
-        if mission_info.stage == 0 then
-            -- the "prerequisite" field in script/headtaking/legendary_heads.lua
-            local prereq = obj.prerequisite
+            -- only against targeted AI faction
+            if not faction_obj:is_human() then
+                local mission_info = self.legendary_mission_info[head_key]
 
-            if prereq then
-                core:add_listener(
-                    prereq.name,
-                    prereq.event_name,
-                    prereq.conditional,
-                    function(context)
-                        -- trigger first stage (1)
+                -- if it's the pre-stage (0), then initialize the pre-requisite listener
+                if mission_info.stage == 0 then
+                    -- the "prerequisite" field in script/headtaking/legendary_heads.lua
+                    local prereq = obj.prerequisite
+        
+                    if prereq then
+                        core:add_listener(
+                            prereq.name,
+                            prereq.event_name,
+                            prereq.conditional,
+                            function(context)
+                                -- trigger first stage (1)
+                                self:trigger_legendary_head_mission(head_key, 1)
+                            end,
+                            false
+                        )
+                    else
+                        -- trigger first stage right away
                         self:trigger_legendary_head_mission(head_key, 1)
-                    end,
-                    false
-                )
-            else
-                -- trigger first stage right away
-                self:trigger_legendary_head_mission(head_key, 1)
+                    end
+                else
+                    -- trigger any necessary listeners for this stage
+                    local mission_chain = obj.mission_chain
+                    local mission = mission_chain[mission_info.stage]
+        
+                    self:initialize_legendary_head_listener(mission, head_key)
+                end
             end
-        else
-            -- trigger any necessary listeners for this stage
-            local mission_chain = obj.mission_chain
-            local mission = mission_chain[mission_info.stage]
-
-            self:initialize_legendary_head_listener(mission, head_key)
         end
     end
 end
@@ -1070,13 +1367,21 @@ function headtaking:is_legendary_head_mission_active(mission_key)
     if highest_append == 0 then return false else return highest_append end
 end
 
+---- TODO get the LL off the map when this mission is started
 -- this is tracked automagically through the interactive marker stuff
 -- spawn the interactable marker, start the mission, and begin the backend tracking for shit
-function headtaking:trigger_legendary_head_encounter(head_key, encounter_key)
+function headtaking:trigger_legendary_head_encounter(head_key, mission_obj, stage_num)
     if not is_string(head_key) then
         -- errmsg
         return false
     end
+
+    if not is_table(mission_obj) then
+        -- errmsg
+        return false
+    end
+
+    local encounter_key = mission_obj.key
 
     if not is_string(encounter_key) then
         -- errmsg
@@ -1089,21 +1394,28 @@ function headtaking:trigger_legendary_head_encounter(head_key, encounter_key)
         return false
     end
 
-    -- grab the relevant faction object
-    local faction_key = legendary_obj.faction_key
-    local faction_obj = cm:get_faction(faction_key)
+    -- grab the relevant faction object (wrapper validates that it exists, and checks the QB backup faction)
+    local faction_key, is_qb = self:get_faction_key_for_legendary_head(head_key)
+    if not faction_key then
+        -- errmsg, there's no faction for the leghead
+        return false
+    end
 
-    -- make sure the faction exists and isn't dead
-    if not faction_obj or faction_obj:is_dead() then
+    -- grab the enemy faction and remove their faction leader from the map
+    if not is_qb then
+        local faction_obj = cm:get_faction(faction_key)
+        local faction_leader = faction_obj:faction_leader()
 
-        -- if it is, grab the backup faction
-        faction_key = legendary_obj.backup_faction_key
-        faction_obj = cm:get_faction(faction_key)
-    
-        -- if that doesn't exist, get out of here
-        if not faction_obj then
-            -- errmsg
-            return false
+        if not faction_leader:is_null_interface() then
+            -- if they're wounded, unwound them and rewound them?
+            if faction_leader:is_wounded() then
+                cm:stop_character_convalescing(faction_leader:command_queue_index())
+            end
+
+            cm:callback(function()
+                -- wound for 100 turns. Revived or killed after the Encounter battle
+                cm:wound_character("character_cqi:"..faction_leader:command_queue_index(), 100, false)
+            end, 0.1)
         end
     end
 
@@ -1150,7 +1462,7 @@ function headtaking:trigger_legendary_head_encounter(head_key, encounter_key)
         encounter_key,
         encounter_key,
         5,
-        5,
+        1,
         self.faction_key,
         "",
         true
@@ -1193,6 +1505,12 @@ function headtaking:trigger_legendary_head_encounter(head_key, encounter_key)
         true,
         0
     )
+
+    -- trigger the mission itself
+    self:construct_mission_from_data(mission_obj, head_key, stage_num)
+
+    -- set the zoom-to location onto the encounter!
+    cm:set_scripted_mission_position(encounter_key, encounter_key, x, y)
 end
 
 -- trigger individual missions in each legendary head chain
@@ -1230,7 +1548,7 @@ function headtaking:trigger_legendary_head_mission(head_key, stage_num)
 
     -- check if it's an encounter and handle that elsewhere
     if string.find(mission_obj.key, "_encounter") then
-        return self:trigger_legendary_head_encounter(head_key, mission_obj.key)
+        return self:trigger_legendary_head_encounter(head_key, mission_obj, stage_num)
     end
 
     self:construct_mission_from_data(mission_obj, head_key, stage_num)
@@ -1392,12 +1710,34 @@ function headtaking:init_count_heads()
 
     local legendary_heads = self.legendary_heads
 
+    -- first, weirdly, we have to loop through the leghead table here and check if any faction within is human played
+    -- if they are, remove them
+    -- if they aren't, add up the legendary head num total and amount
+
     local total = 0
     for key,_ in pairs(legendary_heads) do
-        total = total + 1
+        local cont = true
+        local faction_key = self:get_faction_key_for_legendary_head(key)
 
-        if faction_cooking_info:is_ingredient_unlocked(key) then
-            self.legendary_heads_num = self.legendary_heads_num + 1
+        if not faction_key then
+            -- remove it
+            self.legendary_heads[key] = nil
+            cont = false
+        end
+
+        local inner_faction_obj = cm:get_faction(faction_key)
+        if not inner_faction_obj or inner_faction_obj:is_human() then
+            -- remove it
+            self.legendary_heads[key] = nil
+            cont = false
+        end
+
+        if cont then
+            total = total + 1
+
+            if faction_cooking_info:is_ingredient_unlocked(key) then
+                self.legendary_heads_num = self.legendary_heads_num + 1
+            end
         end
     end
 
