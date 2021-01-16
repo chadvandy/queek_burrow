@@ -727,6 +727,15 @@ function headtaking:track_legendary_heads()
                     end
                 end
 
+                -- add the perma effect to Queek
+                local eb = legendary_obj.eb_key
+                if is_string(eb) and eb ~= "" then
+                    -- grab the Queeker character and give him the free EB
+                    local queek = self:get_queek()
+
+                    cm:apply_effect_bundle_to_character(eb, queek, -1)
+                end
+
                 self:add_head_with_key(head_key, details)
 
                 core:trigger_custom_event("HeadtakingLegendaryHeadRetrieved", {headtaking=self, head_key=head_key})
@@ -745,6 +754,43 @@ function headtaking:track_legendary_heads()
             self.legendary_mission_info[head_key].stage = next_stage
 
             self:trigger_legendary_head_mission(head_key, next_stage)
+        end,
+        true
+    )
+
+    local function get_head_key_from_area_key(area_info)
+        -- these are actually both the same
+        local marker_key = area_info.marker_ref
+        local area_key = area_info.instance_ref
+
+        -- remove the "_encounter" suffix on the marker keys, to return the head key
+        return string.gsub(marker_key, "_encounter", "")
+    end
+
+    -- check interaction with any Legendary Head encounters
+    core:add_listener(
+        "HeadtakingLegendaryEncounterInteracted",
+        "HeadtakingLegendaryEncounterInteracted",
+        function(context)
+            return context:character():character_subtype(self.queek_subtype)
+        end,
+        function(context)
+            local head_key = get_head_key_from_area_key(context:table_data())
+
+            -- TODO spawn a force for this faction (Forced_Battle_Manager)
+        end,
+        true
+    )
+
+    -- check if a Leghead encounter has timed out - if it has, return to square 1 for this chain
+    core:add_listener(
+        "HeadtakingLegendaryEncounterTimeout",
+        "HeadtakingLegendaryEncounterTimeout",
+        true,
+        function(context)
+            local head_key = get_head_key_from_area_key(context:table_data())
+
+            -- TODO cancel the active mission here and return to the first step!
         end,
         true
     )
@@ -1009,7 +1055,7 @@ function headtaking:is_legendary_head_mission_active(mission_key)
 
     local highest_append = 0
 
-    for head_key, mission_info in pairs(mission_infos) do
+    for _, mission_info in pairs(mission_infos) do
         local key = mission_info.mission_key
 
         if string.find(key, mission_key) then
@@ -1022,6 +1068,131 @@ function headtaking:is_legendary_head_mission_active(mission_key)
     end
 
     if highest_append == 0 then return false else return highest_append end
+end
+
+-- this is tracked automagically through the interactive marker stuff
+-- spawn the interactable marker, start the mission, and begin the backend tracking for shit
+function headtaking:trigger_legendary_head_encounter(head_key, encounter_key)
+    if not is_string(head_key) then
+        -- errmsg
+        return false
+    end
+
+    if not is_string(encounter_key) then
+        -- errmsg
+        return false
+    end
+
+    local legendary_obj = self.legendary_heads[head_key]
+    if not legendary_obj then
+        -- errmsg
+        return false
+    end
+
+    -- grab the relevant faction object
+    local faction_key = legendary_obj.faction_key
+    local faction_obj = cm:get_faction(faction_key)
+
+    -- make sure the faction exists and isn't dead
+    if not faction_obj or faction_obj:is_dead() then
+
+        -- if it is, grab the backup faction
+        faction_key = legendary_obj.backup_faction_key
+        faction_obj = cm:get_faction(faction_key)
+    
+        -- if that doesn't exist, get out of here
+        if not faction_obj then
+            -- errmsg
+            return false
+        end
+    end
+
+    -- grab Queek and find a suitable spawn location for him
+    local queek = self:get_queek()
+
+    -- find the spawn coordinates for the interactable marker (10 hex from Queek, or Queek's Capital as fallback)
+    local x,y
+
+    -- if there's no Queek, or Queek is at sea, spawn the encounter by the capital
+    if not queek or not queek:has_military_force() or queek:is_at_sea() then
+        local capital = cm:get_faction(self.faction_key):home_region()
+        if capital:is_null_interface() then
+            -- I literally don't know what to do here
+            -- errmsg
+            return
+        end
+
+        local region_key = capital:name()
+
+        x,y = cm:find_valid_spawn_location_for_character_from_settlement(
+            faction_key,
+            region_key,
+            false,
+            true,
+            10
+        )
+    else
+        x,y = cm:find_valid_spawn_location_for_character_from_character(
+            faction_key,
+            "character_cqi:"..queek:command_queue_index(),
+            true,
+            10
+        )
+    end
+
+    if not x or x == -1 then
+        -- errmsg
+        return false
+    end
+
+    -- create an interactive marker obj
+    local encounter_marker = Interactive_Marker_Manager:new_marker_type(
+        encounter_key,
+        encounter_key,
+        5,
+        5,
+        self.faction_key,
+        "",
+        true
+    )
+
+    -- trigger this script event if the marker is not encountered within its duration
+    encounter_marker:add_timeout_event("HeadtakingLegendaryEncounterTimeout")
+
+    -- trigger this script event when the marker is encountered
+    encounter_marker:add_interaction_event("HeadtakingLegendaryEncounterInteracted")
+    
+    encounter_marker:is_persistent(false)
+
+    local event_feed_prefix = "event_feed_strings_text_"
+    local spawn_event_prefix = event_feed_prefix .. encounter_key
+    local timeout_event_prefix = event_feed_prefix .. "legendary_head_encounter_timeout"
+
+    -- add the event feed stuff for the marker being triggered and for the marker being lost
+    encounter_marker:add_spawn_event_feed_event(
+        spawn_event_prefix.. "_title",
+        spawn_event_prefix .. "_primary_detail",
+        spawn_event_prefix .. "_secondary_detail",
+        668,
+        self.faction_key
+    )
+
+    encounter_marker:add_despawn_event_feed_event(
+        timeout_event_prefix.. "_title",
+        timeout_event_prefix .. "_primary_detail",
+        timeout_event_prefix .. "_secondary_detail",
+        668,
+        self.faction_key
+    )
+
+    -- spawn the marker on the map (at the previously determined location)
+    encounter_marker:spawn_at_location(
+        x,
+        y,
+        false,
+        true,
+        0
+    )
 end
 
 -- trigger individual missions in each legendary head chain
@@ -1054,8 +1225,12 @@ function headtaking:trigger_legendary_head_mission(head_key, stage_num)
     -- pick a mission for this stage from a list, if it's a generated mission
     if mission_obj.key == "GENERATED" then
         -- construct this mission elsewhere
-        self:trigger_random_legendary_head_mission_at_stage(head_key, stage_num)
-        return
+        return self:trigger_random_legendary_head_mission_at_stage(head_key, stage_num)
+    end
+
+    -- check if it's an encounter and handle that elsewhere
+    if string.find(mission_obj.key, "_encounter") then
+        return self:trigger_legendary_head_encounter(head_key, mission_obj.key)
     end
 
     self:construct_mission_from_data(mission_obj, head_key, stage_num)
@@ -1198,7 +1373,7 @@ function headtaking:squeak_init(new_stage)
         self:squeak_random_shit()
         
         -- Squeak asks of you to conquer K8P finally and settle down, papa
-        -- TODO add in mission to reconquista K8P
+        -- TODO add in mission to reconquista K8P        
     elseif stage == 4 then
         -- After K8P conquer, Squeak demands of wildly wild shit
         self:squeak_random_shit()
