@@ -48,7 +48,6 @@ local headtaking = {
     -- table matching subcultures to their head reward
     valid_heads = require("script/headtaking/valid_heads"),
 
-    -- TODO, should it be indexed like this, or just read valid_heads in a slightly expensive loop? I'm okay with either, don't want to hold too much memory
     -- built from valid_heads, makes a quick index'd table to pull valid heads based on subculture or subtype
     subculture_to_heads = {},
     subtype_to_heads = {},
@@ -996,7 +995,7 @@ function headtaking:track_legendary_heads()
 
     -- triggered if the encounter is timed out or if the encounter battle is lost
     -- lose the active mission; allow the vanilla LL to respawn; return to the first mission in the chain
-    local function you_failed(head_key)
+    local function you_failed(head_key, is_timeout)
         local head_obj = self.legendary_heads[head_key]
         if not head_obj then
             -- errmsg
@@ -1020,7 +1019,20 @@ function headtaking:track_legendary_heads()
             end
         end
 
-        -- TODO trigger a message event to inform the player of their absolute fuck up
+        -- trigger a message event to inform the player of their absolute fuck up
+        local event_feed_string = "event_feed_strings_text_legendary_head_encounter_failed"
+        if is_timeout then
+            event_feed_string = "event_feed_strings_text_legendary_head_encounter_timeout"
+        end
+
+        cm:show_message_event(
+            self.faction_key,
+            event_feed_string.."_title",
+            event_feed_string.."_primary_detail",
+            event_feed_string.."_secondary_detail",
+            true,
+            667
+        )
 
         -- start the first mission once more
         self:set_legendary_head_mission_info_to_new_stage(head_key, 1)
@@ -1035,7 +1047,7 @@ function headtaking:track_legendary_heads()
             local head_key = get_head_key_from_encounter_key(context:table_data().area_key)
 
             -- cancel the active mission here and return to the first step!
-            you_failed(head_key)
+            you_failed(head_key, true)
         end,
         true
     )
@@ -1061,9 +1073,7 @@ function headtaking:track_legendary_heads()
                 ModLog("Killed")
                 invasion_manager:remove_invasion(encounter_key)
                 ModLog("Removed")
-            end
-
-            
+            end  
         end,
         true
     )
@@ -1294,7 +1304,19 @@ local function deepcopy(orig, copies)
     return copy
 end
 
+-- subloop is increased through the inner call of trigger_random - will only go up subloop_max times.
+-- subloop reduced to 0 on a successful call or on the end of the loop
+local subloop = 0
+local subloop_max = 5
+
 function headtaking:trigger_random_legendary_head_mission_at_stage(head_key, stage_num)
+    if subloop >= 5 then
+        -- errmsg, couldn't trigger mission at this stage
+        -- TODO, refresh the stage and mission info?
+        subloop = 0
+        return
+    end
+
     local legendary_missions = self.legendary_missions
 
     local stage_missions = legendary_missions[stage_num]
@@ -1317,7 +1339,8 @@ function headtaking:trigger_random_legendary_head_mission_at_stage(head_key, sta
     if highest_append then
         if highest_append == 3 then
             -- find another mission?
-            -- TODO prevent infi loop
+            -- prevent infi loop
+            subloop = subloop + 1
             self:trigger_random_legendary_head_mission_at_stage(head_key, stage_num)
             return
         else
@@ -1328,6 +1351,8 @@ function headtaking:trigger_random_legendary_head_mission_at_stage(head_key, sta
         -- append "_1" to the end
         data.key = data.key .. "_1"
     end
+
+    subloop = 0
 
     ModLog("relevant mission key: "..mission.key)
     ModLog("copied mission key: "..data.key)
@@ -1368,7 +1393,6 @@ function headtaking:is_legendary_head_mission_active(mission_key)
     if highest_append == 0 then return false else return highest_append end
 end
 
----- TODO get the LL off the map when this mission is started
 -- this is tracked automagically through the interactive marker stuff
 -- spawn the interactable marker, start the mission, and begin the backend tracking for shit
 function headtaking:trigger_legendary_head_encounter(head_key, mission_obj, stage_num)
@@ -1692,7 +1716,7 @@ function headtaking:squeak_init(new_stage)
         self:squeak_random_shit()
         
         -- Squeak asks of you to conquer K8P finally and settle down, papa
-        -- TODO add in mission to reconquista K8P        
+        -- TODO add in mission to reconquista K8P / whatever the Vortex requirement should be
     elseif stage == 4 then
         -- After K8P conquer, Squeak demands of wildly wild shit
         self:squeak_random_shit()
