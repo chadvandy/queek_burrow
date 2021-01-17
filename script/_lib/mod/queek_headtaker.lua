@@ -185,6 +185,11 @@ function headtaking:get_headtaking_chance(target_character_obj)
         elseif string.find(subculture_key, "grn") then
             -- auto +10% against grn
             chance = chance + 10
+        elseif string.find(subculture_key, "skv") then
+            -- +15% if Make Examples!
+            if self:queek_has_skill("wh2_main_skill_skv_queek_unique_melee_4") then
+                chance = chance + 15
+            end
         end
     end
 
@@ -2581,6 +2586,14 @@ function headtaking:set_head_counters()
             -- create a lil dummy ingredient!
             if any_hidden then
                 local template = UIComponent(ingredient_list:Find("template_ingredient"))
+
+                -- check if there's already a dummy - if there is, don't do shit
+                local test = ingredient_list:Find("nemesis_dummy")
+                if test then
+                    -- there's already a dummy, don't do nothin
+                    return
+                end
+
                 local dummy = UIComponent(template:CopyComponent("nemesis_dummy"))
                 local slot_item = UIComponent(dummy:Find("slot_item"))
 
