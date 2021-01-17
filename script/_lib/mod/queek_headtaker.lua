@@ -161,6 +161,24 @@ function headtaking:queek_has_trait(trait_key)
     return queek:has_trait(trait_key)
 end
 
+function headtaking:queek_has_access_to_head(head_key)
+    if not is_string(head_key) then
+        -- errmsg
+        return false
+    end
+
+    if not self.valid_heads[head_key] and not self.legendary_heads[head_key] then
+        -- errmsg
+        return false
+    end
+
+    local faction_key = self.faction_key
+    local faction_obj = cm:get_faction(faction_key)
+    local faction_cooking_info = cm:model():world():cooking_system():faction_cooking_info(faction_obj)
+
+    return faction_cooking_info:is_ingredient_unlocked(head_key)
+end
+
 function headtaking:get_headtaking_chance(target_character_obj)
     local chance = self.chance
 
@@ -2556,29 +2574,33 @@ function headtaking:set_head_counters()
                 if head_key == "template_ingredient" then
                     -- skip
                 else
-                    -- if the mission chain hasn't started to get this head (stage 0), hide the head
-                    local legendary_mission_info = self.legendary_mission_info[head_key]
+                    -- check if the ingredient is already unlocked; if it is, don't do anything
+                    if not self:queek_has_access_to_head(head_key) then
 
-                    if not legendary_mission_info then
-                        ModLog("no legendary mission info found for head with key: "..head_key)
-                    else
-                        local stage = legendary_mission_info.stage
+                        -- if the mission chain hasn't started to get this head (stage 0), hide the head entirely
+                        local legendary_mission_info = self.legendary_mission_info[head_key]
 
-                        local visible = true
-
-                        ModLog("current stage is: "..tostring(stage))
-
-                        if not stage or stage == 0 then
-                            -- this head is locked - hide it from the UI
-                            visible = false
-                            any_hidden = true
+                        if not legendary_mission_info then
+                            ModLog("no legendary mission info found for head with key: "..head_key)
                         else
-                            -- is anything needed here?
+                            local stage = legendary_mission_info.stage
+
+                            local visible = true
+
+                            ModLog("current stage is: "..tostring(stage))
+
+                            if not stage or stage == 0 then
+                                -- this head is locked - hide it from the UI
+                                visible = false
+                                any_hidden = true
+                            else
+                                -- is anything needed here?
+                            end
+
+                            ModLog("setting visibility: "..tostring(visible))
+
+                            ingredient:SetVisible(visible)
                         end
-
-                        ModLog("setting visibility: "..tostring(visible))
-
-                        ingredient:SetVisible(visible)
                     end
                 end
             end
@@ -2825,6 +2847,7 @@ function headtaking:panel_opened()
 
     legendary_num:SetStateText(str)
 
+    -- TODO set this to the elaborate-ish tooltip that shows all perma-effects from Legheads
     -- TODO make this more interesting later on
     -- set a tooltip on the Queek Trait icon
     local trait = find_uicomponent("queek_cauldron", "left_colum", "progress_display_holder", "trait")
