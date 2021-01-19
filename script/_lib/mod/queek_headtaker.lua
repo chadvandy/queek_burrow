@@ -28,6 +28,7 @@ local headtaking = {
 
     squeak_stage = 0,
     squeak_mission_info = {
+        turns_since_last_event = 1,
         turns_since_last_mission = false,
         num_missions = 0,
         current_mission = "",
@@ -238,6 +239,53 @@ function headtaking:add_all_heads()
     for head_key,_ in pairs(self.legendary_heads) do
         self:add_head_with_key(head_key)
     end
+end
+
+-- add a random head, starting with any that the faction doesn't currently have
+-- if all heads are had, just a perfectly random one
+function headtaking:add_random_head()
+    local heads = self.heads
+    local unhad = {}
+    local all = {}
+
+    for head_key, head_obj in pairs(heads) do
+        local count = head_obj.num_heads
+
+        if count < 1 then
+            unhad[#unhad+1] = head_key
+        end
+
+        all[#all+1] = head_key
+    end
+
+    local my_head
+    -- if there's no unhads, pick a perfectly random one
+    if #unhad == 0 then
+        my_head = all[cm:random_number(#all)]
+    else
+        my_head = unhad[cm:random_number(#unhad)]
+    end
+
+    self:add_head_with_key(my_head)
+end
+
+-- lose a head randomly from your stash
+function headtaking:lose_random_head()
+    local heads = self.heads
+    local had_heads = {}
+
+    for head_key, head_obj in pairs(heads) do
+        local count = head_obj.num_heads
+        for _ = 1, count do
+            had_heads[#had_heads] = head_key
+        end
+    end
+
+    local ran = cm:random_number(#had_heads)
+    local lost_head = had_heads[ran]
+
+    -- remove it from your stash
+    self.heads[lost_head].num_heads = self.heads[lost_head].num_heads - 1
 end
 
 function headtaking:add_head_with_key(head_key, details, skip_event)
@@ -522,6 +570,9 @@ function headtaking:squeak_trigger_mission()
         last_valid = 4
     end
 
+    -- update last mission time
+    self.squeak_mission_info.turns_since_last_mission = cm:model():turn_number()
+
     -- pick a random mission from the list
     local ran = cm:random_number(last_valid)
 
@@ -581,14 +632,88 @@ function headtaking:squeak_trigger_mission()
     if mission.listener then mission.listener() end
 end
 
+-- trigger a random squeak event from a list and listen for the result
 function headtaking:squeak_trigger_event()
+    local events = {
+        "squeak_found_this",        -- incident, free head
+        "squeak_has_this",          -- dilemma, pick from 4 heads
+        "squeak_stole_this",        -- dilemma, Squeak stole your head, caught him. choose to take the head and reprimand him, or send him to get another
+        "squeak_took_this",         -- dilemma, Squeak took a head from a general, choose to accept, return, return a fake, or destroy the evidence
+    }
 
+    local ran = cm:random_number(#events)
+
+    local head_event = events[#ran]
+
+    if ran >= 1 then -- it's an incident
+        cm:trigger_incident(
+            self.faction_key,
+            head_event,
+            true
+        )
+
+        -- add a single head that isn't already in the collection; if you have all heads, just add a random one
+        self:add_random_head()
+    else             -- it's a derlermer
+        cm:trigger_dilemma(
+            self.faction_key,
+            head_event
+        )
+
+        -- listen for the result, change it based on the dilemmer
+        core:add_listener(
+            "SqueakDilemma",
+            "DilemmaChoiceMadeEvent",
+            function(context)
+                return context:dilemma() == head_event
+            end,
+            function(context)
+                local choice = context:choice() + 1 -- +1 because this is passed as 0-1-2-3, instead of 1-2-3-4
+                local key = context:dilemma()
+
+                -- 25% chance of a head + an effect bundle, 25% chance of a dudd (negative bundle on Queek), 50% chance of a head you already have + an okay effect bundle
+                if key == "squeak_has_this" then
+
+
+                elseif key == "squeak_stole_this" then
+                    -- Squeak stole your head
+
+                    -- Choice 1: Take it back, get a negative EB for Squeak's sneakiness
+                    if choice == 1 then
+                        -- the EB is applied through the DB, boi
+                    end
+
+                    -- Choice 2: Lose it, get a different head but no EB
+                    if choice == 2 then
+                        self:lose_random_head()
+                        self:add_random_head()
+                    end
+                elseif key == "squeak_took_this" then
+
+
+                end
+            end,
+            false
+        )
+    end
 end
 
--- this is where Squeak's random incessant requests are generated
-function headtaking:squeak_random_shit()
-    -- local stage = self.squeak_stage
-    
+-- check to see if we should trigger an event; if yes, trigger an event, lol
+function headtaking:squeak_trigger_event_test()
+    local turn = cm:model():turn_number()
+    local last_turn = self.squeak_mission_info.turns_since_last_event
+
+    -- 100% chance at 20 turns since, 5% at 1 turns since, so on
+    local turns_since = turn - last_turn
+    local chance = (turns_since / 20) * 100
+
+    if cm:random_number(100) <= chance then
+        self:squeak_trigger_event()
+    end
+end
+
+-- called each faction turn start - checks if there's a mission available to trigger, or if the first mission needs to be triggered, or if there's an available random event
+function headtaking:squeak_random_shit_check()
     -- first time Squeak is having a mission!
     if self.squeak_mission_info.turns_since_last_mission == false then
         local found_factions = {}
@@ -622,6 +747,39 @@ function headtaking:squeak_random_shit()
         return
     end
 
+    -- if there's not a mission active, check if we should trigger one
+    if self.squeak_mission_info.current_mission == "" then
+        local this_turn = cm:model():turn_number()
+        local that_turn = self.squeak_mission_info.turns_since_last_mission
+
+        local turns_since = this_turn - that_turn
+
+        local do_it = false
+
+        -- 20;40;60;80;100% chance every turn since last mission completed
+        if turns_since >= 5 then
+            do_it = true
+        else
+            local chance = 20 * turns_since
+
+            if cm:random_number(100) <= chance then
+                do_it = true
+            end
+        end
+
+        if do_it then
+            self:squeak_trigger_mission()
+        else
+            -- if we're not triggering a mish this turn, check if we should do a random event
+            self:squeak_trigger_event_test()
+        end
+    else -- if there's currently a mission, do a check to see if we should do a random event!
+        self:squeak_trigger_event_test()
+    end
+end
+
+-- this is where Squeak's random incessant requests are generated
+function headtaking:squeak_random_shit()
     -- if there's a mission already active, check if it's a scripted one and start the listener, else do naught
     if self.squeak_mission_info.current_mission ~= "" then
         local mission_data = self:get_mission_with_key(self.squeak_mission_info.current_mission)
@@ -630,8 +788,6 @@ function headtaking:squeak_random_shit()
         if mission_data and mission_data.listener then
             mission_data.listener()
         end
-
-        return
     end
 
     -- there's not a mission already and it's not the first mission; check if there should be a mission triggered
@@ -642,27 +798,7 @@ function headtaking:squeak_random_shit()
             return context:faction():name() == self.faction_key
         end,
         function(context)
-            local this_turn = cm:model():turn_number()
-            local that_turn = self.squeak_mission_info.turns_since_last_mission
-
-            local turns_since = this_turn - that_turn
-
-            local do_it = false
-        
-            -- 20;40;60;80;100% chance every turn since last mission completed
-            if turns_since >= 5 then
-                do_it = true
-            else
-                local chance = 20 * turns_since
-        
-                if cm:random_number(100) <= chance then
-                    do_it = true
-                end
-            end
-
-            if do_it then
-                self:squeak_trigger_mission()
-            end
+            self:squeak_random_shit_check()
         end,
         true
     )
@@ -1656,7 +1792,7 @@ function headtaking:squeak_init(new_stage)
                 local completed_mission = context:mission():mission_record_key()
 
                 self.squeak_mission_info.current_mission = ""
-                self.squeak_mission_info.turns_since_last_mission = -1
+                self.squeak_mission_info.turns_since_last_mission = cm:model():turn_number() 
                 self.squeak_mission_info.num_missions = self.squeak_mission_info.num_missions + 1
 
                 core:trigger_custom_event("HeadtakingSqueakMissionCompleted", {headtaking = self, mission=completed_mission, num_missions = self.squeak_mission_info.num_missions})
