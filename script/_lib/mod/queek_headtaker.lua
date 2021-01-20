@@ -1020,14 +1020,23 @@ function headtaking:track_legendary_heads()
                     end
                 end
 
-                -- add the perma effect to Queek
-                local eb = legendary_obj.eb_key
-                if is_string(eb) and eb ~= "" then
-                    -- grab the Queeker character and give him the free EB
-                    local queek = self:get_queek()
+                -- add the ancillary to Queek
+                local queek = self:get_queek()
+                cm:force_add_ancillary(
+                    queek,
+                    head_key,
+                    true,
+                    false
+                )
 
-                    cm:apply_effect_bundle_to_character(eb, queek, -1)
-                end
+                -- -- add the perma effect to Queek
+                -- local eb = legendary_obj.eb_key
+                -- if is_string(eb) and eb ~= "" then
+                --     -- grab the Queeker character and give him the free EB
+                --     local queek = self:get_queek()
+
+                --     cm:apply_effect_bundle_to_character(eb, queek, -1)
+                -- end
 
                 self:add_head_with_key(head_key, details)
 
