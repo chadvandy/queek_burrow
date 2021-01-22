@@ -2998,7 +2998,7 @@ end
 
 -- this has to be made more interesting later on!
 function headtaking:get_queek_trait_tooltip_text()
-    return "Queek Head-taking\nAfter every battle Queek Headtaker participates in, there's a " .. tostring(self:get_headtaking_chance()) .. "% chance that Queek will take the head of any Lord killed in battle.\nThis doesn't apply to Immortal characters, or Wounded characters."
+    return string.format("Queek Head-taking\nAfter every battle Queek Headtaker participates in, there's a %d%% chance that Queek will take the head of any Lord killed in battle.\nThis doesn't apply to Immortal characters, or Wounded characters.", self:get_headtaking_chance())
 end
 
 function headtaking:ui_init()
@@ -3057,8 +3057,8 @@ function headtaking:ui_init()
 
                     local do_stuff = find_uicomponent(tt, "dy_recipes_eltharion_challenge")
                     local txt = do_stuff:GetStateText()
-                    txt = txt .. tostring(self.total_heads)
 
+                    txt = string.format(txt, self.total_heads, self.legendary_heads_num)
                     do_stuff:SetStateText(txt)
                 end, 5)
 
