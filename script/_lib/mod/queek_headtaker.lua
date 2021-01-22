@@ -57,60 +57,112 @@ local headtaking = {
     legendary_heads = require("script/headtaking/legendary_heads"),
 }
 
+local prefix = "[QUEEK] "
+
+local function log_init()
+    local file_name = "!vandy_lib.txt"
+    local file = io.open(file_name, "w+")
+
+    file:write("[VLIB] " .. get_timestamp() .. " New Vandy Lib Initialized\n")
+    file:close()
+end
+
+local function log(text)
+    text = tostring(text)
+
+    local time = get_timestamp()
+    text = prefix .. time .. "\t" .. text .. "\n"
+
+    local file_name = "!vandy_lib.txt"
+    local file = io.open(file_name, "a+")
+
+    file:write(text)
+
+    file:close()
+
+    ModLog(text)
+end
+
+local function err(text)
+    local pre = prefix .. "[SCRIPT ERROR] "
+    
+    text = tostring(text)
+
+    local time = get_timestamp()
+    text = pre .. time .. "\t" .. text .. "\n"
+
+    local file_name = "!vandy_lib.txt"
+    local file = io.open(file_name, "a+")
+
+    file:write(text)
+
+    file:close()
+
+    ModLog(text)
+end
+
 local function timed_callback(key, condition, callback, time)
     if not is_string(key) then
-        ModLog("timed_callback called, key isn't a string: ".. tostring(key))
+        log("timed_callback called, key isn't a string: ".. tostring(key))
         return false
     end
 
     if not is_function(condition) and condition ~= true then
-        ModLog("timed_callback called, condition isn't a function or true: "..tostring(condition))
+        log("timed_callback called, condition isn't a function or true: "..tostring(condition))
         return false
     end
 
     if not is_function(callback) then
-        ModLog("timed_callback called, callback isn't a function: "..tostring(callback))
+        log("timed_callback called, callback isn't a function: "..tostring(callback))
         return false
     end
 
     if not is_number(time) then
-        ModLog("timed_callback called, time isn't a number: "..tostring(time))
+        log("timed_callback called, time isn't a number: "..tostring(time))
         return false
     end
-    
-    core:add_listener(
-        key,
-        "RealTimeTrigger",
-        function(context)
-            return context.string == key and (condition == true or condition(context) == true)
-        end,
-        function(context)
-            callback(context)
-        end,
-        false
-    )
 
-    real_timer.register_singleshot(key, time)
+    local function trigger_and_listener()
+        core:add_listener(
+            key,
+            "RealTimeTrigger",
+            function(context)
+                return context.string == key --and (condition == true or condition(context) == true)
+            end,
+            function(context)
+                if condition == true or condition(context) == true then
+                    callback(context)
+                else
+                    trigger_and_listener()
+                end
+            end,
+            false
+        )
+
+        real_timer.register_singleshot(key, time)
+    end
+
+    trigger_and_listener()
 end
 
 local function repeat_callback(key, condition, callback, time)
     if not is_string(key) then
-        -- errmsg
+        err("repeat_callback() called, but the key provided is not a string!")
         return false
     end
 
     if not is_function(condition) or not condition == true then
-        -- errmsg
+        err("repeat_callback() called, but the condition provided is not a function or true!")
         return false
     end
 
     if not is_function(callback) then
-        -- errmsg
+        err("repeat_callback() called, but the callback provided is not a function!")
         return false
     end
 
     if not is_number(time) then
-        -- errmsg
+        err("repeat_callback() called, but the time provided is not a number!")
         return false
     end
 
@@ -134,7 +186,7 @@ function headtaking:get_queek()
     local queek = faction_obj:faction_leader()
 
     if not queek:character_subtype(self.queek_subtype) then
-        -- errmsg?????
+        err("headtaking:get_queek() called, but Queek is not found in the faction! Big issue!")
         return false
     end
 
@@ -164,12 +216,12 @@ end
 
 function headtaking:queek_has_access_to_head(head_key)
     if not is_string(head_key) then
-        -- errmsg
+        err("queek_has_access_to_head() called, but the head_key ["..tostring(head_key).."] provided is not a string!")
         return false
     end
 
     if not self.valid_heads[head_key] and not self.legendary_heads[head_key] then
-        -- errmsg
+        err("queek_has_access_to_head() called, but the head_key ["..tostring(head_key).."] provided is not a valid head!")
         return false
     end
 
@@ -178,6 +230,30 @@ function headtaking:queek_has_access_to_head(head_key)
     local faction_cooking_info = cm:model():world():cooking_system():faction_cooking_info(faction_obj)
 
     return faction_cooking_info:is_ingredient_unlocked(head_key)
+end
+
+function headtaking:can_get_head_from_event(context)
+    local character = context:character()
+    local faction = character:faction()
+
+    -- log("Character killed, checking stuff.")
+    -- log("is null interface: "..tostring(character:is_null_interface()))
+    -- log("has mf force:" .. tostring(character:has_military_force()))
+    -- log("is embedded: "..tostring(character:is_embedded_in_military_force()))
+    -- log("has garri: "..tostring(character:has_garrison_residence()))
+
+    -- log("queek is in: "..tostring(cm:pending_battle_cache_char_is_involved(cm:get_faction(self.faction_key):faction_leader())))
+    -- log("faction name: "..faction:name())
+    -- log("is quest battle faction: "..tostring(faction:is_quest_battle_faction()))
+
+    return
+        character:is_null_interface() == false                              -- character that died actually exists
+        -- and character:character_type("general")                          -- temp disbabled -- generals only
+        and (character:has_military_force() or character:is_embedded_in_military_force() or character:has_garrison_residence()) -- needs to be in an army (leading, hero in it, or a garrison friend)
+        and cm:pending_battle_cache_char_is_involved(cm:get_faction(self.faction_key):faction_leader())     -- Queek was involved in the battle
+        and faction:name() ~= self.faction_key                  -- the character that died isn't in Clan Mors, lol
+        and faction:name() ~= "wh2_main_skv_skaven_rebels"  -- not Skaven Rebels (prevent cheesing (: )
+        and not faction:is_quest_battle_faction()               -- not a QB faction
 end
 
 function headtaking:get_headtaking_chance(target_character_obj)
@@ -217,7 +293,7 @@ end
 
 function headtaking:increase_headtaking_chance(plus)
     if not is_number(plus) then
-        -- errmsg
+        err("increase_headtaking_chance() called, but the value ["..tostring(plus).."] provided is not a number!")
         return false
     end
 
@@ -290,17 +366,17 @@ end
 
 function headtaking:add_head_with_key(head_key, details, skip_event)
     if not is_string(head_key) then
-        -- errmsg
+        err("add_head_with_key() called, but the head_key ["..tostring(head_key).."] provided is not a string!")
         return false
     end
 
     -- test that it's a valid head!
     if not self.valid_heads[head_key] and not self.legendary_heads[head_key] then
-        -- errmsg
+        err("add_head_with_key() called, but the head_key ["..tostring(head_key).."] provided is not a valid head!")
         return false
     end
 
-    ModLog("adding head with key "..head_key)
+    log("adding head with key "..head_key)
 
     local faction_obj = cm:get_faction(self.faction_key)
     local queek_obj = faction_obj:faction_leader()
@@ -337,8 +413,8 @@ function headtaking:add_head_with_key(head_key, details, skip_event)
     self.total_heads = self.total_heads + 1
     self.current_heads = self.current_heads + 1
 
-    ModLog("New total heads counter is: "..tostring(self.total_heads))
-    ModLog("New current heads counter is: "..tostring(self.current_heads))
+    log("New total heads counter is: "..tostring(self.total_heads))
+    log("New current heads counter is: "..tostring(self.current_heads))
     
     if not skip_event then
         if faction_obj:is_human() then
@@ -406,13 +482,13 @@ Skarsnik
 
 function headtaking:get_head_for_subculture(sc_key)
     if not is_string(sc_key) then
-        -- errmsg
+        err("get_head_for_subculture() called, but the subculture key ["..tostring(sc_key).."] provided is not a string!")
         return false
     end
 
     local sc_table = self.subculture_to_heads[sc_key]
     if not is_table(sc_table) then
-        -- errmsg
+        err("get_head_for_subculture() called, but the subculture key ["..tostring(sc_key).."] provided is not valid! No heads found for this one.")
         return false
     end
 
@@ -425,7 +501,7 @@ end
 
 function headtaking:get_valid_head_for_character(subculture_key, subtype_key)
     if not is_string(subculture_key) or not is_string(subtype_key) then
-        -- errmsg
+        err("get_valid_head_for_character() called, but the subtype or subculture key ["..tostring(subtype_key).."] / ["..tostring(subculture_key).."] provided is not a string!")
         return false
     end
 
@@ -496,7 +572,7 @@ function headtaking:add_head(character_obj, queek_obj)
         return false
     end
 
-    --ModLog("adding head with key ["..head_key.."]")
+    --log("adding head with key ["..head_key.."]")
 
     self:add_head_with_key(head_key, details)
 end
@@ -540,7 +616,7 @@ end
 
 function headtaking:get_mission_with_key(key)
     if not is_string(key) then
-        -- errmsg
+        err("get_mission_with_key() called, but the key ["..tostring(key).."] provided is not a string!")
         return false
     end
 
@@ -552,7 +628,7 @@ function headtaking:get_mission_with_key(key)
         end
     end
 
-    -- errmsg, none found! :(
+    err("get_mission_with_key() called, but no mission with ["..tostring(key).."] was found!")
     return false
 end
 
@@ -632,20 +708,62 @@ function headtaking:squeak_trigger_mission()
     if mission.listener then mission.listener() end
 end
 
+-- gets every deployed general in the faction with 6 or under loyalty
+function headtaking:get_generals_in_faction_with_low_loyalty()
+    local retval = false
+    local faction = cm:get_faction(self.faction_key)
+
+    if not faction then
+        err("get_generals_in_faction_with_low_loyalty() called, but Queek's faction isn't found! Big issue!")
+        return false
+    end
+
+    local char_list = faction:character_list()
+
+    local saddies = {}
+
+    for i = 0, char_list:num_items() -1 do
+        local char = char_list:item_at(i)
+
+        if char:character_type("general") and not char:character_subtype(self.queek_subtype) and char:has_military_force() and char:loyalty() <= 6 then
+            retval = true
+            saddies[#saddies+1] = char:command_queue_index()
+        end
+    end
+
+    if retval then
+        return saddies
+    end
+
+    return false
+end
+
 -- trigger a random squeak event from a list and listen for the result
 function headtaking:squeak_trigger_event()
+    local ok, errmsg = pcall(function()
+    log("event 1")
     local events = {
         "squeak_found_this",        -- incident, free head
         "squeak_has_this",          -- dilemma, pick from 4 heads
-        "squeak_stole_this",        -- dilemma, Squeak stole your head, caught him. choose to take the head and reprimand him, or send him to get another
-        "squeak_took_this",         -- dilemma, Squeak took a head from a general, choose to accept, return, return a fake, or destroy the evidence
+        "squeak_stole_this",        -- dilemma, Squeak stole your head, caught him. choose to take the head and reprimand him, or send him to get another       
     }
+
+    local generals = self:get_generals_in_faction_with_low_loyalty()
+    local general_cqi
+
+    -- lock this event unless there are any valid generals
+    if generals then
+        events[#events+1] = "squeak_took_this" -- dilemma, Squeak took a head from a general, choose to accept, return, return a fake, or destroy the evidence
+        general_cqi = generals[cm:random_number(#generals)]
+    end
+
+    log("event 2")
 
     local ran = cm:random_number(#events)
 
-    local head_event = events[#ran]
+    local head_event = events[ran]
 
-    if ran >= 1 then -- it's an incident
+    if ran <= 1 then -- it's an incident
         cm:trigger_incident(
             self.faction_key,
             head_event,
@@ -655,10 +773,27 @@ function headtaking:squeak_trigger_event()
         -- add a single head that isn't already in the collection; if you have all heads, just add a random one
         self:add_random_head()
     else             -- it's a derlermer
-        cm:trigger_dilemma(
-            self.faction_key,
-            head_event
-        )
+        if head_event == "squeak_took_this" then
+            -- special dilemma with this special dilemma
+            local faction_cqi = cm:get_faction(self.faction_key):command_queue_index()
+
+            cm:trigger_dilemma_with_targets(
+                faction_cqi,
+                head_event,
+                0,
+                0,
+                general_cqi,
+                0,
+                0,
+                0,
+                nil
+            )
+        else
+            cm:trigger_dilemma(
+                self.faction_key,
+                head_event
+            )
+        end
 
         -- listen for the result, change it based on the dilemmer
         core:add_listener(
@@ -673,8 +808,21 @@ function headtaking:squeak_trigger_event()
 
                 -- 25% chance of a head + an effect bundle, 25% chance of a dudd (negative bundle on Queek), 50% chance of a head you already have + an okay effect bundle
                 if key == "squeak_has_this" then
+                    local options = {"best", "dud", "okay", "okay"}
+                    options = cm:random_sort(options) -- randomize these options
 
+                    local result = options[choice]
 
+                    -- TODO eb's
+                    if result == "best" then
+                        -- head + great EB
+                        self:add_random_head()
+                    elseif result == "dud" then
+                        -- negative EB
+                    elseif result == "okay" then
+                        -- head + okay EB
+                        self:add_random_head()
+                    end
                 elseif key == "squeak_stole_this" then
                     -- Squeak stole your head
 
@@ -689,13 +837,39 @@ function headtaking:squeak_trigger_event()
                         self:add_random_head()
                     end
                 elseif key == "squeak_took_this" then
+                    -- Squeak took a head from a general, the rascal
+                    local general = cm:get_character_by_cqi(general_cqi)
 
+                    -- Choice 1: Thanks dog, free head + lost loyalty
+                    if choice == 1 then
+                        self:add_random_head()
+                        cm:modify_character_personal_loyalty_factor("character_cqi:"..general_cqi, cm:random_number(-1, -2))
+                    
+                    -- Choice 2: Free loyalty for returning it
+                    elseif choice == 2 then
+                        cm:modify_character_personal_loyalty_factor("character_cqi:"..general_cqi, cm:random_number(2, 1))
+                    
+                    -- Choice 3: Free head, 50% chance to gain loyalty, 50% chance to lose more loyalty
+                    elseif choice == 3 then
+                        self:add_random_head()
+                        if cm:random_number() >= 50 then
+                            -- free loyalty
+                            cm:modify_character_personal_loyalty_factor("character_cqi:"..general_cqi, cm:random_number(2, 1))
+                        else
+                            -- much lost loyalty
+                            cm:modify_character_personal_loyalty_factor("character_cqi:"..general_cqi, cm:random_number(-1, -4))
+                        end
 
+                    -- Choice 4: No head, no loyalty change
+                    elseif choice ==4 then
+                        -- nada, maybe an EB in DB
+                    end
                 end
             end,
             false
         )
     end
+end) if not ok then err(errmsg) end
 end
 
 -- check to see if we should trigger an event; if yes, trigger an event, lol
@@ -806,7 +980,7 @@ end
 
 function headtaking:kill_char_with_cqi(cqi)
     if not is_number(cqi) then
-        -- errmsg
+        err("kill_char_with_cqi() called, but the cqi provided ["..tostring(cqi).."] is not a number!")
         return false
     end
 
@@ -825,39 +999,52 @@ function headtaking:kill_char_with_cqi(cqi)
     cm:kill_character(cqi, false, true)
 end
 
-function headtaking:set_legendary_head_mission_info_to_new_stage(head_key, stage_num)
+function headtaking:set_legendary_head_mission_info_to_new_stage(head_key, stage_num, trigger_encounter)
     if not is_string(head_key) then
-        -- errmsg
+        err("set_legendary_head_mission_info_to_new_stage() called but the head_key provided ["..tostring(head_key).."] is not a string!")
         return false
     end
 
     if not is_number(stage_num) then
-        -- errmsg
+        err("set_legendary_head_mission_info_to_new_stage() called but the stage_num provided ["..tostring(stage_num).."] is not a number!")
         return false
     end
 
     local mission_info = self.legendary_mission_info[head_key]
     if not mission_info then
-        -- errmsg
+        err("set_legendary_head_mission_info_to_new_stage() called but the head_key provided ["..tostring(head_key).."] does not have any mission info saved!")
         return false
+    end
+
+    local head_obj = self.legendary_heads[head_key]
+    if not head_obj then
+        err("set_legendary_head_mission_info_to_new_stage() called but the head_key provided ["..tostring(head_key).."] does not have any legendary information!")
+        return false
+    end
+
+    -- if this is a QB faction, we have to set the stage to the end of the chain 
+    local _, is_qb = self:get_faction_key_for_legendary_head(head_key)
+    if is_qb then
+        -- push this to the final step in the mission chain
+        stage_num = #head_obj.mission_chain
     end
 
     mission_info.mission_key = ""
     mission_info.tracker = nil
     mission_info.stage = stage_num
 
-    self:trigger_legendary_head_mission(head_key, stage_num)
+    self:trigger_legendary_head_mission(head_key, stage_num, trigger_encounter)
 end
 
 function headtaking:get_faction_key_for_legendary_head(head_key)
     if not is_string(head_key) then
-        -- errmsg
+        err("get_faction_key_for_legendary_head() called, but the head_key provided ["..tostring(head_key).."] is not a string!")
         return false, false
     end
     
     local legendary_obj = self.legendary_heads[head_key]
     if not legendary_obj then
-        -- errmsg
+        err("get_faction_key_for_legendary_head() called, but the head_key provided ["..tostring(head_key).."] is not a valid legendary head!")
         return false, false
     end
 
@@ -870,7 +1057,7 @@ function headtaking:get_faction_key_for_legendary_head(head_key)
         faction_obj = cm:get_faction(faction_key)
         is_qb = true
         if not faction_obj then
-            -- errmsg, none found
+            err("get_faction_key_for_legendary_head() called, but the head_key provided ["..tostring(head_key).."] does not have a valid faction saved! Tried ["..tostring(legendary_obj.faction_key).."] and ["..tostring(legendary_obj.backup_faction_key).."].")
             return false, false
         end
     end
@@ -880,13 +1067,13 @@ end
 
 function headtaking:generate_leghead_force(head_key)
     if not is_string(head_key) then
-        -- errmsg
+        err("generate_leghead_force() called, but the head_key provided ["..tostring(head_key).."] is not a valid string!")
         return false
     end
 
     local encounter_tab = self.legendary_encounters[head_key]
     if not encounter_tab then
-        -- errmsg
+        err("generate_leghead_force() called, but the head_key provided ["..tostring(head_key).."] does not have an encounter attached!")
         return false
     end
 
@@ -935,7 +1122,7 @@ function headtaking:generate_leghead_force(head_key)
 
     local power = normalize_power_for_turn_number()
 
-    ModLog("Generating force for "..head_key..", with template_key ["..template_key.."], num_units ["
+    log("Generating force for "..head_key..", with template_key ["..template_key.."], num_units ["
     ..num_units.."], and power ["..power.."].")
 
     local force_list = WH_Random_Army_Generator:generate_random_army(head_key.."_encounter", template_key, num_units, power, false, false)
@@ -971,7 +1158,7 @@ function headtaking:track_legendary_heads()
             end
 
             if not head_key then
-                -- errmsg
+                err("LegendaryHeadMissionCompleted triggered, but no head_key was found for the mission with key ["..mission_key.."]")
                 return false
             end
 
@@ -1073,20 +1260,20 @@ function headtaking:track_legendary_heads()
             return context:character():character_subtype(self.queek_subtype)
         end,
         function(context)
-            ModLog("Queek interacted with the leghead encounter")
+            log("Queek interacted with the leghead encounter")
             local head_key = get_head_key_from_encounter_key(context:table_data().marker_ref)
-            ModLog("Head key: "..head_key)
+            log("Head key: "..head_key)
             local head_info = self.legendary_heads[head_key]
 
             cm:callback(function()
                 -- grab the faction key (backup for factions that don't exist on Vor)
                 local faction_key = self:get_faction_key_for_legendary_head(head_key)
                 if not faction_key then
-                    ModLog("no faction found, in real or backup!")
+                    log("no faction found, in real or backup!")
                     return false
                 end
 
-                ModLog("Spawning force for faction: " .. faction_key)
+                log("Spawning force for faction: " .. faction_key)
 
                 local ok, err = pcall(function()
 
@@ -1121,10 +1308,10 @@ function headtaking:track_legendary_heads()
 
                 -- local function find_location()
                 --     num_done = num_done + 1
-                --     ModLog("finding location, loop "..num_done)
+                --     log("finding location, loop "..num_done)
 
                 --     if num_done >= 15 then
-                --         ModLog("max loop, returning "..ox.." "..oy)
+                --         log("max loop, returning "..ox.." "..oy)
                 --         return ox,oy
                 --     end
 
@@ -1137,13 +1324,13 @@ function headtaking:track_legendary_heads()
                 --         true
                 --     )
 
-                --     ModLog("Found ("..x..", "..y..")")
+                --     log("Found ("..x..", "..y..")")
 
                 --     if x == -1 then
-                --         ModLog("Invalid, trying again")
+                --         log("Invalid, trying again")
                 --         x = ix + cm:random_number(2, -2)
                 --         y = iy + cm:random_number(2, -2)
-                --         ModLog("Passing forward ("..x..", "..y..")")
+                --         log("Passing forward ("..x..", "..y..")")
                 --         return find_location()
                 --     end
 
@@ -1155,7 +1342,7 @@ function headtaking:track_legendary_heads()
                 -- spawn above force to attack Queek
                 fb:trigger_battle(force_key, mf_cqi, ox, oy, false, true)
 
-                end) if not ok then ModLog(err) end
+                end) if not ok then log(err) end
             end, 0.5)
         end,
         true
@@ -1166,7 +1353,7 @@ function headtaking:track_legendary_heads()
     local function you_failed(head_key, is_timeout)
         local head_obj = self.legendary_heads[head_key]
         if not head_obj then
-            -- errmsg
+            err("Mission failure triggered for ["..tostring(head_key).."], but there's no head_obj attached to that head key?")
             return false
         end
         
@@ -1226,7 +1413,7 @@ function headtaking:track_legendary_heads()
         "HeadtakingLegendaryHeadBattleLost",
         true,
         function(context)
-            ModLog("Headtaking Legendary Head Battle Lost")
+            log("Headtaking Legendary Head Battle Lost")
             local encounter_key = context:forced_battle_key()
             local head_key = get_head_key_from_encounter_key(encounter_key)
 
@@ -1236,11 +1423,11 @@ function headtaking:track_legendary_heads()
             -- destroy the invasion
             local inv = invasion_manager:get_invasion(encounter_key)
             if inv then
-                ModLog("Inv found")
+                log("Inv found")
                 inv:kill()
-                ModLog("Killed")
+                log("Killed")
                 invasion_manager:remove_invasion(encounter_key)
-                ModLog("Removed")
+                log("Removed")
             end  
         end,
         true
@@ -1252,12 +1439,26 @@ function headtaking:track_legendary_heads()
         "HeadtakingLegendaryHeadBattleWon",
         true,
         function(context)
-            ModLog("HeadtakingLegendaryHeadBattleWon")
+            log("HeadtakingLegendaryHeadBattleWon")
             local encounter_key = context:forced_battle_key(0)
             -- local head_key = get_head_key_from_encounter_key(encounter_key)
 
             -- win the mission! The rest of the stuff is handled elsewhere
             cm:complete_scripted_mission_objective(encounter_key, encounter_key, true)
+        end,
+        true
+    )
+
+    -- check if the HeadtakingEncounterTrigger event is called, to delay the encounters on Vortex to space them out a bit
+    core:add_listener(
+        "HeadtakingEncounterTrigger",
+        "HeadtakingEncounterTrigger",
+        true,
+        function(context)
+            local head_key = context.string
+
+            -- this is automatically set to the encounter within this function
+            self:set_legendary_head_mission_info_to_new_stage(head_key, 1, true)
         end,
         true
     )
@@ -1289,13 +1490,13 @@ function headtaking:track_legendary_heads()
                             prereq.conditional,
                             function(context)
                                 -- trigger first stage (1)
-                                self:trigger_legendary_head_mission(head_key, 1)
+                                self:set_legendary_head_mission_info_to_new_stage(head_key, 1)
                             end,
                             false
                         )
                     else
                         -- trigger first stage right away
-                        self:trigger_legendary_head_mission(head_key, 1)
+                        self:set_legendary_head_mission_info_to_new_stage(head_key, 1)
                     end
                 else
                     -- trigger any necessary listeners for this stage
@@ -1317,8 +1518,7 @@ function headtaking:initialize_legendary_head_listener(mission_obj, head_key)
         local mission_key = mission_info.mission_key
 
         if not is_string(mission_key) then
-            -- errmsg generated mission key wasn't saved???
-            
+            err("initialize_legendary_head_listener() called for a generated mission, but the mission key was not saved in the mission info! Returning early.")            
             return false
         end
 
@@ -1333,8 +1533,7 @@ function headtaking:initialize_legendary_head_listener(mission_obj, head_key)
         end
 
         if mission_obj.key == "GENERATED" then
-            -- errmsg couldn't find the mission used, wtf?
-
+            err("initialize_legendary_head_listener() called for a generated mission, but no mission was found in the legendary missions file? Returning early.")
             return false
         end
     end
@@ -1362,8 +1561,8 @@ function headtaking:initialize_legendary_head_listener(mission_obj, head_key)
 end
 
 function headtaking:construct_mission_from_data(data, head_key, stage_num)
-    ModLog("Constructing mission from data, for head ["..head_key.."] during stage ["..tostring(stage_num).."].")
-    ModLog("Mission key is "..data.key)
+    log("Constructing mission from data, for head ["..head_key.."] during stage ["..tostring(stage_num).."].")
+    log("Mission key is "..data.key)
     -- save the current stage in storage
     local legendary_mission_info = self.legendary_mission_info[head_key]
 
@@ -1381,11 +1580,11 @@ function headtaking:construct_mission_from_data(data, head_key, stage_num)
     end
 
     if is_function(data.constructor) then
-        ModLog("Constructing!")
+        log("Constructing!")
         data = data.constructor(data, self, head_key)
 
         if not data then
-            ModLog("Constructor failed D:")
+            log("Constructor failed D:")
             return false
         end
     end
@@ -1394,7 +1593,7 @@ function headtaking:construct_mission_from_data(data, head_key, stage_num)
     local mission = mission_manager:new(self.faction_key, data.key)
 
     mission:add_new_objective(data.objective)
-    ModLog("Objective added "..data.objective)
+    log("Objective added "..data.objective)
     
     mission:set_mission_issuer("squeak")
 
@@ -1402,15 +1601,15 @@ function headtaking:construct_mission_from_data(data, head_key, stage_num)
     for i = 1, #data.condition do
         local condition = data.condition[i]
         mission:add_condition(condition)
-        ModLog("Condition added "..condition)
+        log("Condition added "..condition)
     end
 
     mission:add_payload(data.payload)
-    ModLog("Payload added "..data.payload)
+    log("Payload added "..data.payload)
 
     mission:trigger()
 
-    ModLog("trigger'd")
+    log("trigger'd")
 
     -- if there's a start func for whatever reason, call it!
     if data.start_func then
@@ -1418,7 +1617,7 @@ function headtaking:construct_mission_from_data(data, head_key, stage_num)
         setfenv(f, core:get_env())
 
         f(self, head_key)
-        ModLog("Start func'd")
+        log("Start func'd")
 
         -- data.start_func(self, head_key)
     end
@@ -1435,11 +1634,11 @@ function headtaking:construct_mission_from_data(data, head_key, stage_num)
 
     if is_function(listener) then
         listener = listener(self, head_key)
-        ModLog("Listener func'd")
+        log("Listener func'd")
     end
 
     if is_table(listener) then
-        ModLog("Listener'd")
+        log("Listener'd")
         core:add_listener(
             listener.name,
             listener.event_name,
@@ -1448,7 +1647,7 @@ function headtaking:construct_mission_from_data(data, head_key, stage_num)
             listener.persistence or false
         )
     end
-end) if not ok then ModLog(err) end
+end) if not ok then log(err) end
 end
 
 local function deepcopy(orig, copies)
@@ -1479,8 +1678,10 @@ local subloop_max = 5
 
 function headtaking:trigger_random_legendary_head_mission_at_stage(head_key, stage_num)
     if subloop >= 5 then
-        -- errmsg, couldn't trigger mission at this stage
-        -- TODO, refresh the stage and mission info?
+        err("trigger_random_legendary_head_mission_at_stage() called, but the loop to find a valid mission has failed. Called for ["..head_key.."] at stage ["..tostring(stage_num).."].")
+
+        -- refresh the stage and mission info?
+        self:set_legendary_head_mission_info_to_new_stage(head_key, stage_num)
         subloop = 0
         return
     end
@@ -1490,7 +1691,7 @@ function headtaking:trigger_random_legendary_head_mission_at_stage(head_key, sta
     local stage_missions = legendary_missions[stage_num]
 
     if not is_table(stage_missions) or #stage_missions < 1 then
-        -- errmsg no missions at this stage???
+        err("trigger_random_legendary_head_mission_at_stage() called for head ["..tostring(head_key).."] at stage ["..tostring(stage_num).."] - there's no mission available at this stage! Returning early.")
         return false
     end
 
@@ -1522,8 +1723,8 @@ function headtaking:trigger_random_legendary_head_mission_at_stage(head_key, sta
 
     subloop = 0
 
-    ModLog("relevant mission key: "..mission.key)
-    ModLog("copied mission key: "..data.key)
+    log("relevant mission key: "..mission.key)
+    log("copied mission key: "..data.key)
 
     -- change the override_text field to be override_text..head_key, for proper localisation
     if is_table(data.condition) then
@@ -1565,34 +1766,39 @@ end
 -- spawn the interactable marker, start the mission, and begin the backend tracking for shit
 function headtaking:trigger_legendary_head_encounter(head_key, mission_obj, stage_num)
     if not is_string(head_key) then
-        -- errmsg
+        err("trigger_legendary_head_encounter() called, but the head_key provided ["..tostring(head_key).."] is not a valid string!")
         return false
     end
 
     if not is_table(mission_obj) then
-        -- errmsg
+        err("trigger_legendary_head_encounter() called, but the mission_obj provided ["..tostring(mission_obj).."] is not a valid table!")
         return false
     end
 
     local encounter_key = mission_obj.key
 
     if not is_string(encounter_key) then
-        -- errmsg
+        err("trigger_legendary_head_encounter() called, but the mission_obj provided doesn't have a valid key ["..tostring(encounter_key).."].")
         return false
     end
 
     local legendary_obj = self.legendary_heads[head_key]
     if not legendary_obj then
-        -- errmsg
+        err("trigger_legendary_head_encounter() called, but the head_key provided ["..head_key.."] isn't a valid legendary head!")
         return false
     end
 
     -- grab the relevant faction object (wrapper validates that it exists, and checks the QB backup faction)
     local faction_key, is_qb = self:get_faction_key_for_legendary_head(head_key)
     if not faction_key then
-        -- errmsg, there's no faction for the leghead
-        return false
+        return err("trigger_legendary_head_encounter() called for head ["..head_key.."], but there's no faction found for this legendary head!")
     end
+
+    -- grab Queek and find a suitable spawn location for him
+    local queek = self:get_queek()
+
+    -- find the spawn coordinates for the interactable marker (10 hex from Queek, or Queek's Capital as fallback)
+    local x,y
 
     -- grab the enemy faction and remove their faction leader from the map
     if not is_qb then
@@ -1610,20 +1816,20 @@ function headtaking:trigger_legendary_head_encounter(head_key, mission_obj, stag
                 cm:wound_character("character_cqi:"..faction_leader:command_queue_index(), 100, false)
             end, 0.1)
         end
+    else
+        if not trigger_encounter then
+            -- delay the encounter by 5-10 turns
+            cm:add_turn_countdown_event(self.faction_key, cm:random_number(10, 5), "HeadtakingEncounterTrigger", head_key)
+            return
+        end
     end
-
-    -- grab Queek and find a suitable spawn location for him
-    local queek = self:get_queek()
-
-    -- find the spawn coordinates for the interactable marker (10 hex from Queek, or Queek's Capital as fallback)
-    local x,y
 
     -- if there's no Queek, or Queek is at sea, spawn the encounter by the capital
     if not queek or not queek:has_military_force() or queek:is_at_sea() then
         local capital = cm:get_faction(self.faction_key):home_region()
         if capital:is_null_interface() then
             -- I literally don't know what to do here
-            -- errmsg
+            err("trigger_legendary_head_encounter() called, but Queek isn't found and neither is Queek's capital! Dunno at all what to do here, so we're just stopping.")
             return
         end
 
@@ -1646,7 +1852,7 @@ function headtaking:trigger_legendary_head_encounter(head_key, mission_obj, stag
     end
 
     if not x or x == -1 then
-        -- errmsg
+        err("trigger_legendary_head_encounter() called, but no valid spawn location found for the encounter!")
         return false
     end
 
@@ -1708,9 +1914,9 @@ end
 
 -- trigger individual missions in each legendary head chain
 -- if no stage is provided, it defaults to 1 to start it off
-function headtaking:trigger_legendary_head_mission(head_key, stage_num)
+function headtaking:trigger_legendary_head_mission(head_key, stage_num, trigger_encounter)
     if not is_string(head_key) then
-        -- errmsg
+        err("trigger_legendary_head_mission() called, but the head_key provided ["..tostring(head_key).."] is not a valid string!")
         return false
     end
 
@@ -1720,7 +1926,7 @@ function headtaking:trigger_legendary_head_mission(head_key, stage_num)
     local current_key = self.legendary_mission_info[head_key].mission_key
 
     if is_string(current_key) and current_key ~= "" then
-        -- errmsg, mission already active
+        err("trigger_legendary_head_mission() called for head ["..head_key.."], but there's already a mission active ["..current_key.."].")
         return
     end
     
@@ -1729,7 +1935,7 @@ function headtaking:trigger_legendary_head_mission(head_key, stage_num)
     local mission_obj = mission_chain[stage_num]
     
     if not mission_obj then
-        -- errmsg
+        err("trigger_legendary_head_mission() called for head ["..head_key.."] at stage ["..tostring(stage_num).."], but there's no mission available at that stage!")
         return false
     end
     
@@ -1741,7 +1947,7 @@ function headtaking:trigger_legendary_head_mission(head_key, stage_num)
 
     -- check if it's an encounter and handle that elsewhere
     if string.find(mission_obj.key, "_encounter") then
-        return self:trigger_legendary_head_encounter(head_key, mission_obj, stage_num)
+        return self:trigger_legendary_head_encounter(head_key, mission_obj, stage_num, trigger_encounter)
     end
 
     self:construct_mission_from_data(mission_obj, head_key, stage_num)
@@ -1785,9 +1991,9 @@ function headtaking:squeak_init(new_stage)
         self.squeak_stage = new_stage
     end
 
-    ModLog("Squeak init!")
+    log("Squeak init!")
     local stage = self.squeak_stage
-    ModLog("Stage is "..tostring(stage))
+    log("Stage is "..tostring(stage))
 
     if stage >= 1  then
         -- check whenever a Squeak mish is completed
@@ -1816,10 +2022,10 @@ function headtaking:squeak_init(new_stage)
             "AddSqueakPls",
             "HeadtakingCollectedHead",
             function(context)
-                ModLog("Checking if Squeak add do")
+                log("Checking if Squeak add do")
                 local total_heads = self.total_heads
                 local chance = 0
-                ModLog("Current total heads: "..tostring(total_heads))
+                log("Current total heads: "..tostring(total_heads))
                 
                 -- chance is 50% on the first head collected (2, since Queek starts with one)
                 if total_heads == 2 then
@@ -1835,7 +2041,7 @@ function headtaking:squeak_init(new_stage)
                 -- if chance is 50, then the random_number returning 1-50 will pass, so on.
                 local ran = cm:random_number(100,1)
 
-                ModLog("ran calc'd is: "..tostring(ran))
+                log("ran calc'd is: "..tostring(ran))
 
                 return ran <= chance
             end,
@@ -2026,30 +2232,10 @@ function headtaking:initialize_listeners()
         "queek_killed_someone",
         "CharacterConvalescedOrKilled",
         function(context)
-            local character = context:character()
-            local faction = character:faction()
-
-            ModLog("Character killed, checking stuff.")
-            ModLog("is null interface: "..tostring(character:is_null_interface()))
-            ModLog("has mf force:" .. tostring(character:has_military_force()))
-            ModLog("is embedded: "..tostring(character:is_embedded_in_military_force()))
-            ModLog("has garri: "..tostring(character:has_garrison_residence()))
-
-            ModLog("queek is in: "..tostring(cm:pending_battle_cache_char_is_involved(cm:get_faction(self.faction_key):faction_leader())))
-            ModLog("faction name: "..faction:name())
-            ModLog("is quest battle faction: "..tostring(faction:is_quest_battle_faction()))
-
-            return 
-                character:is_null_interface() == false                      -- character that died actually exists
-                -- and character:character_type("general")                          -- temp disbabled -- generals only
-                and (character:has_military_force() or character:is_embedded_in_military_force() or character:has_garrison_residence()) -- needs to be in an army (leading, hero in it, or a garrison friend)
-                and cm:pending_battle_cache_char_is_involved(cm:get_faction(self.faction_key):faction_leader())     -- Queek was involved in the battle
-                and faction:name() ~= self.faction_key                  -- the character that died isn't in Clan Mors, lol
-                and faction:name() ~= "wh2_main_skv_skaven_rebels"  -- not Skaven Rebels (prevent cheesing (: )
-                and not faction:is_quest_battle_faction()               -- not a QB faction
+            return self:can_get_head_from_event(context)
         end,
         function(context)
-            ModLog("queek killed someone")
+            log("queek killed someone")
             local killed_character = context:character()
             local queek_faction = cm:get_faction(self.faction_key)
             if not queek_faction or queek_faction:is_null_interface() then
@@ -2120,19 +2306,19 @@ end
 
 function headtaking:unlock_slot_at_index(index)
     if not is_number(index) then
-        -- errmsg
+        err("unlock_slot_at_index() called, but the index provided ["..tostring(index).."] is not a number!")
         return false
     end
 
     local slot = self.slots[index]
 
     if not slot then
-        -- errmsg, this slot doesn't exist
+        err("unlock_slot_at_index() called at index ["..tostring(index).."], but there's no slot at that index! Highest index is: "..tostring(#self.slots))
         return false
     end
 
     if slot == "open" then
-        -- errmsg, already opened!
+        err("unlock_slot_at_index() called at index ["..tostring(index).."], but that slot is already opened!")
         return false
     end
 
@@ -2221,7 +2407,7 @@ function headtaking:init()
 
     -- set up the self.heads table - it tracks the number of heads available, or if a head is locked
     if cm:is_new_game() or self.heads == {} then
-        ModLog("setting up fresh heads")
+        log("setting up fresh heads")
 
         local faction_cooking_info = cm:model():world():cooking_system():faction_cooking_info(faction_obj)
         for key, _ in pairs(self.valid_heads) do
@@ -2258,7 +2444,7 @@ function headtaking:init()
         cm:set_faction_max_secondary_cooking_ingredients(faction_obj, 0)
     end
 
-    ModLog("Heads table: "..tostring(self.heads))
+    log("Heads table: "..tostring(self.heads))
 
     self:init_count_heads()
     self:squeak_init()
@@ -2407,13 +2593,13 @@ function headtaking:get_duration_of_current_dish()
     local info = cm:model():world():cooking_system():faction_cooking_info(cm:get_faction(self.faction_key))
 
     if info:is_null_interface() then
-        -- errmsg
+        err("get_duration_of_current_dish() called, but there's no cooking info available? Big issue!")
         return false
     end
 
     local active_dish = info:active_dish()
     if not string.find(tostring(active_dish), "COOKING_DISH_SCRIPT_INTERFACE") then
-        -- errmsg there is no current dish - skip!
+        log("get_duration_of_current_dish() called, but there's no active dish right now!")
         return false
     end
 
@@ -2444,7 +2630,7 @@ function headtaking:ui_refresh()
 
             self:check_duration_in_ui()
 
-        end) if not ok then ModLog(err) end
+        end) if not ok then log(err) end
     end
 end
 
@@ -2455,7 +2641,7 @@ function headtaking:ui_refresh_header()
     local header = find_uicomponent("layout", "resources_bar", "topbar_list_parent", "queek_headtaking")
 
     if not is_uicomponent(header) then
-        ModLog("Headtaking Header doesn't exist rn, yo!")
+        log("Headtaking Header doesn't exist rn, yo!")
         return false
     end
 
@@ -2464,7 +2650,7 @@ function headtaking:ui_refresh_header()
     local duration = self:get_duration_of_current_dish()
 
     if not duration then
-        -- errmsg
+        -- no active dish rn, yo
         return false
     end
 
@@ -2576,8 +2762,7 @@ function headtaking:check_duration_in_ui()
     local duration = self:get_duration_of_current_dish()
 
     if not duration then
-        -- errmsg (? or do nothing because there's no active dish?)
-
+        -- no current active dish
         return false
     end
 
@@ -2642,10 +2827,10 @@ end
 function headtaking:set_head_counters()
     local category_list = find_uicomponent("queek_cauldron", "left_colum", "ingredients_holder", "ingredient_category_list")
 
-    ModLog("head 1")
+    log("head 1")
 
     if not is_uicomponent(category_list) then
-        -- errmsg
+        err("set_head_counters() called, but the category list was not found!")
         return false
     end
 
@@ -2707,12 +2892,12 @@ function headtaking:set_head_counters()
             end
         else 
             -- hide Nemesis heads if they're still locked, and include a template dummy if there's more hidden heads
-            ModLog("in nemeses heads")
+            log("in nemeses heads")
             local any_hidden = false
             for j = 0, ingredient_list:ChildCount() -1 do
                 local ingredient = UIComponent(ingredient_list:Find(j))
                 local id = ingredient:Id()
-                ModLog("checking ingredient "..id)
+                log("checking ingredient "..id)
                 local head_key = string.gsub(id, "CcoCookingIngredientRecord", "")
 
                 -- skip template_ingredient
@@ -2726,13 +2911,13 @@ function headtaking:set_head_counters()
                         local legendary_mission_info = self.legendary_mission_info[head_key]
 
                         if not legendary_mission_info then
-                            ModLog("no legendary mission info found for head with key: "..head_key)
+                            log("no legendary mission info found for head with key: "..head_key)
                         else
                             local stage = legendary_mission_info.stage
 
                             local visible = true
 
-                            ModLog("current stage is: "..tostring(stage))
+                            log("current stage is: "..tostring(stage))
 
                             if not stage or stage == 0 then
                                 -- this head is locked - hide it from the UI
@@ -2742,7 +2927,7 @@ function headtaking:set_head_counters()
                                 -- is anything needed here?
                             end
 
-                            ModLog("setting visibility: "..tostring(visible))
+                            log("setting visibility: "..tostring(visible))
 
                             ingredient:SetVisible(visible)
                         end
@@ -2804,6 +2989,10 @@ function headtaking:ui_get_num_legendary_heads()
         str = current_heads .. " / " .. tostring(self.legendary_heads_max)
     end
 
+    log("Got num legendary heads: "..str)
+    log("Curr: "..self.legendary_heads_num)
+    log("Max: "..self.legendary_heads_max)
+
     return str
 end
 
@@ -2813,16 +3002,18 @@ function headtaking:get_queek_trait_tooltip_text()
 end
 
 function headtaking:ui_init()
-    -- ModLog("ui init")
+    log("ui init")
     local topbar = find_uicomponent(core:get_ui_root(), "layout", "resources_bar", "topbar_list_parent")
     if is_uicomponent(topbar) then
-        -- ModLog("topbar found")
+        log("topbar found")
         local uic = UIComponent(topbar:CreateComponent("queek_headtaking", "ui/campaign ui/queek_headtaking"))
 
         if not is_uicomponent(uic) then
-            -- ModLog("uic not created?")
+            log("uic not created?")
             return false
         end
+
+        topbar:Layout()
 
         -- TODO set this to something more interesting later on
         -- set the tooltip for the Queek Trait icon
@@ -2830,20 +3021,26 @@ function headtaking:ui_init()
         trait:SetTooltipText(self:get_queek_trait_tooltip_text(), true)
 
         -- set the total of heads to be "0 / ?" or "1 / 4" or whatever, depending on known heads
-        local grom_goals = uic:SequentialFind("grom_goals")
+        local grom_goals = UIComponent(uic:Find("grom_goals"))
 
-        local txt = self:ui_get_num_legendary_heads()
+        do
+            local txt = self:ui_get_num_legendary_heads()
+            local start_state = grom_goals:CurrentState()
 
-        grom_goals:SetState("hover")
-        grom_goals:SetStateText(txt)
+            for i = 0, grom_goals:NumStates() -1 do
+                local state = grom_goals:GetStateByIndex(i)
+                grom_goals:SetState(state)
+                grom_goals:SetStateText(txt)
+            end
 
-        grom_goals:SetState("NewState")
-        grom_goals:SetStateText(txt)
+            grom_goals:SetState(start_state)
+        end
+
+        log("Grom goals: "..grom_goals:GetStateText())
 
         -- print_all_uicomponent_children(uic)
 
         --uic:SetVisible(true)
-        topbar:Layout()
 
         core:add_listener(
             "queek_goals",
@@ -2852,20 +3049,25 @@ function headtaking:ui_init()
                 return UIComponent(context.component) == grom_goals
             end,
             function(context)
-                -- find the tooltip (a child of root called tooltip_queek_goals)
-                local tt = find_uicomponent("tooltip_queek_goals")
+                timed_callback("queek_goals", 
+                function() return is_uicomponent(find_uicomponent("tooltip_queek_goals")) end,
+                function()
+                    -- find the tooltip (a child of root called tooltip_queek_goals)
+                    local tt = find_uicomponent("tooltip_queek_goals")
 
-                local do_stuff = find_uicomponent(tt, "dy_recipes_eltharion_challenge")
-                local txt = do_stuff:GetStateText()
-                txt = txt .. tostring(self.total_heads)
+                    local do_stuff = find_uicomponent(tt, "dy_recipes_eltharion_challenge")
+                    local txt = do_stuff:GetStateText()
+                    txt = txt .. tostring(self.total_heads)
 
-                do_stuff:SetStateText(txt)
+                    do_stuff:SetStateText(txt)
+                end, 5)
+
             end,
             true
         )
 
     else
-        -- ModLog("topbar unfound?")
+        -- log("topbar unfound?")
     end
 
     core:add_listener(
@@ -3081,7 +3283,7 @@ function headtaking:panel_opened()
     local category_list = find_uicomponent("queek_cauldron", "left_colum", "ingredients_holder", "ingredient_category_list")
 
     local ok, err = pcall(function()
-        ModLog("starting add list view")
+        log("starting add list view")
         -- add in the listview, bluh
         local list_view = UIComponent(category_list:CreateComponent("list_view", "ui/vandy_lib/vlist"))
 
@@ -3164,11 +3366,12 @@ function headtaking:panel_opened()
         list_box:SetCanResizeHeight(false)
         list_box:SetCanResizeWidth(false)
 
-    end) if not ok then ModLog(err) end
+    end) if not ok then log(err) end
 
     self:ui_refresh()
 end
 
+log_init()
 core:add_static_object("headtaking", headtaking)
 
 cm:add_first_tick_callback(function()
@@ -3184,7 +3387,7 @@ cm:add_first_tick_callback(function()
         if cm:get_local_faction_name(true) == headtaking.faction_key then
             headtaking:ui_init()
         end
-    end) if not ok then ModLog(err) end
+    end) if not ok then log(err) end
 end)
 
 cm:add_loading_game_callback(
