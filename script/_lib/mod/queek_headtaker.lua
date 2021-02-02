@@ -42,7 +42,7 @@ local headtaking = {
     legendary_encounters =require("script/headtaking/legendary_encounters"),
     squeak_missions = require("script/headtaking/squeak_missions"),
 
-    chance = 40, -- chance defaults to 40%
+    chance = 60, -- chance defaults to 60%
     queek_subtype = "wh2_main_skv_queek_headtaker",
     faction_key = "wh2_main_skv_clan_mors",
 
