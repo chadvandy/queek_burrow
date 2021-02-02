@@ -2425,7 +2425,7 @@ function headtaking:init()
         end
 
         -- TODO add details manually
-        self:add_head_with_key("generic_head_skaven", {}, true)
+        self:add_head_with_key("generic_head_high_elf", {}, true)
 
         local loc_prefix = "event_feed_strings_text_headtaking_intro_"
 
@@ -2996,9 +2996,9 @@ function headtaking:ui_get_num_legendary_heads()
     return str
 end
 
--- this has to be made more interesting later on!
 function headtaking:get_queek_trait_tooltip_text()
-    return string.format("Queek Head-taking\nAfter every battle Queek Headtaker participates in, there's a %d%% chance that Queek will take the head of any Lord killed in battle.\nThis doesn't apply to Immortal characters, or Wounded characters.", self:get_headtaking_chance())
+    local str = effect.get_localised_string("yummy_heads_queek_trait_tooltip_text")
+    return string.format(str, self:get_headtaking_chance())
 end
 
 function headtaking:ui_init()
