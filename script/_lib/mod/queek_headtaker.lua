@@ -181,6 +181,15 @@ local function repeat_callback(key, condition, callback, time)
     )
 end
 
+function headtaking:has_squeak()
+    local stage = self:get_squeak_stage()
+    return stage >= 1 and stage < 5
+end
+
+function headtaking:get_squeak_stage()
+    return self.squeak_stage
+end
+
 function headtaking:get_queek()
     local faction_obj = cm:get_faction(self.faction_key)
     local queek = faction_obj:faction_leader()
@@ -345,6 +354,40 @@ function headtaking:add_random_head()
     self:add_head_with_key(my_head)
 end
 
+-- adds a number of random heads (defaults to 3) from a subculture
+-- can be that culture - any variety of heads they have - or a few heads from within that faction's ingredient group
+function headtaking:add_free_heads_from_subculture(subculture_key, num_heads)
+    if not is_string(subculture_key) then
+        -- errmsg
+        return false
+    end
+
+    if not num_heads then num_heads = 3 end
+
+    if not is_number(num_heads) then
+        -- errmsg
+        return false
+    end
+
+    local added = {}
+    local heads = self:get_valid_heads_from_subculture(subculture_key)
+
+    -- local group_heads = self:get_valid_heads_from_group()
+
+
+    -- add one random head from the "heads" table for each head added above
+    for _ = 1, num_heads do
+        added[#added+1] = heads[cm:random_number(#heads)]
+    end
+
+    for i = 1, #added do
+        self:add_head_with_key(added[i], nil, true)
+    end
+
+    -- inform the player of the free many heads
+    cm:trigger_incident(self.faction_key, "yummy_heads_destroyed_faction", true)
+end
+
 -- lose a head randomly from your stash
 function headtaking:lose_random_head()
     local heads = self.heads
@@ -498,6 +541,62 @@ function headtaking:get_head_for_subculture(sc_key)
     return sc_table[ran]
 end
 
+function headtaking:get_valid_heads_for_group(group_key)
+    if not is_string(group_key) then
+        -- errmsg
+        return false
+    end
+
+    local retval = {}
+    local valid_heads = self.valid_heads
+
+    for head_key, head_data in pairs(valid_heads) do
+        local group = head_data.group
+        if group == group_key then
+            retval[#retval+1] = head_key
+        end
+    end
+
+    return retval
+end
+
+function headtaking:get_valid_heads_for_subculture(subculture_key)
+    if not is_string(subculture_key) then
+        -- errmsg
+        return false
+    end
+
+    local valid_heads = {}
+
+    local heads_table = self.subtype_to_heads[subculture_key]
+
+    if is_table(heads_table) then
+        for i = 1, #heads_table do
+            valid_heads[#valid_heads+1] = heads_table[i]
+        end
+    end
+
+    return valid_heads
+end
+
+function headtaking:get_valid_heads_for_subtype(subtype_key)
+    if not is_string(subtype_key) then
+        -- errmsg
+        return false
+    end
+
+    local valid_heads = {}
+
+    local heads_table = self.subtype_to_heads[subtype_key]
+
+    if is_table(heads_table) then
+        for i = 1, #heads_table do
+            valid_heads[#valid_heads+1] = heads_table[i]
+        end
+    end
+
+    return valid_heads
+end
 
 function headtaking:get_valid_head_for_character(subculture_key, subtype_key)
     if not is_string(subculture_key) or not is_string(subtype_key) then
@@ -506,8 +605,9 @@ function headtaking:get_valid_head_for_character(subculture_key, subtype_key)
     end
 
     local valid_heads = {}
-    local sc_table = self.subculture_to_heads[subculture_key]
-    local st_table = self.subtype_to_heads[subtype_key]
+
+    local sc_table = self:get_valid_heads_for_subculture(subculture_key)
+    local st_table = self:get_valid_heads_for_subtype(subtype_key)
 
     if is_table(sc_table) then
         for i = 1, #sc_table do
@@ -2096,6 +2196,8 @@ function headtaking:squeak_init(new_stage)
         self:squeak_random_shit()
 
         -- eventually, Squeak gets caught speaking to Queek's heads secretly, resulting in his fucking death, fuck that guy.
+    elseif stage == 5 then
+        -- dead
     end
 end
 
@@ -2248,9 +2350,17 @@ function headtaking:initialize_listeners()
 
             local chance = self:get_headtaking_chance(killed_character)
 
+            local killed_faction = killed_character:faction()
+
+            -- grant an extra set of free heads if Queek has destroyed an entire faction
+            if killed_faction:is_dead() and self:has_squeak() then
+                self:add_free_heads_from_subculture(killed_faction:subculture(), 3)
+                return
+            end
+
             if rand <= chance then
                 self:add_head(killed_character, queek)
-            end            
+            end
         end,
         true
     )
