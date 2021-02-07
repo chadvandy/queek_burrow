@@ -42,7 +42,7 @@ local headtaking = {
     legendary_encounters =require("script/headtaking/legendary_encounters"),
     squeak_missions = require("script/headtaking/squeak_missions"),
 
-    chance = 60, -- chance defaults to 60%
+    chance = 100, -- chance defaults to 60%
     queek_subtype = "wh2_main_skv_queek_headtaker",
     faction_key = "wh2_main_skv_clan_mors",
 
@@ -245,15 +245,15 @@ function headtaking:can_get_head_from_event(context)
     local character = context:character()
     local faction = character:faction()
 
-    -- log("Character killed, checking stuff.")
-    -- log("is null interface: "..tostring(character:is_null_interface()))
-    -- log("has mf force:" .. tostring(character:has_military_force()))
-    -- log("is embedded: "..tostring(character:is_embedded_in_military_force()))
-    -- log("has garri: "..tostring(character:has_garrison_residence()))
+    log("Character killed, checking stuff.")
+    log("is null interface: "..tostring(character:is_null_interface()))
+    log("has mf force:" .. tostring(character:has_military_force()))
+    log("is embedded: "..tostring(character:is_embedded_in_military_force()))
+    log("has garri: "..tostring(character:has_garrison_residence()))
 
-    -- log("queek is in: "..tostring(cm:pending_battle_cache_char_is_involved(cm:get_faction(self.faction_key):faction_leader())))
-    -- log("faction name: "..faction:name())
-    -- log("is quest battle faction: "..tostring(faction:is_quest_battle_faction()))
+    log("queek is in: "..tostring(cm:pending_battle_cache_char_is_involved(cm:get_faction(self.faction_key):faction_leader())))
+    log("faction name: "..faction:name())
+    log("is quest battle faction: "..tostring(faction:is_quest_battle_faction()))
 
     return
         character:is_null_interface() == false                              -- character that died actually exists
