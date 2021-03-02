@@ -3,6 +3,7 @@ if __game_mode ~= __lib_type_campaign then
     return
 end
 
+---@class headtaking_manager
 local headtaking = {
     -- keep track of all the head objects
 
@@ -81,6 +82,12 @@ local function log(text)
     file:close()
 
     ModLog(text)
+end
+
+local function logf(text, ...)
+    text = string.format(text, ...)
+
+    log(text)
 end
 
 local function err(text)
@@ -566,17 +573,7 @@ function headtaking:get_valid_heads_for_subculture(subculture_key)
         return false
     end
 
-    local valid_heads = {}
-
-    local heads_table = self.subtype_to_heads[subculture_key]
-
-    if is_table(heads_table) then
-        for i = 1, #heads_table do
-            valid_heads[#valid_heads+1] = heads_table[i]
-        end
-    end
-
-    return valid_heads
+    return self.subculture_to_heads[subculture_key]
 end
 
 function headtaking:get_valid_heads_for_subtype(subtype_key)
@@ -585,17 +582,7 @@ function headtaking:get_valid_heads_for_subtype(subtype_key)
         return false
     end
 
-    local valid_heads = {}
-
-    local heads_table = self.subtype_to_heads[subtype_key]
-
-    if is_table(heads_table) then
-        for i = 1, #heads_table do
-            valid_heads[#valid_heads+1] = heads_table[i]
-        end
-    end
-
-    return valid_heads
+    return self.subtype_to_heads[subtype_key]
 end
 
 function headtaking:get_valid_head_for_character(subculture_key, subtype_key)
@@ -604,6 +591,8 @@ function headtaking:get_valid_head_for_character(subculture_key, subtype_key)
         return false
     end
 
+    logf("Getting valid heads for char with subtype %q and subcult %q", subtype_key, subculture_key)
+
     local valid_heads = {}
 
     local sc_table = self:get_valid_heads_for_subculture(subculture_key)
@@ -611,15 +600,15 @@ function headtaking:get_valid_head_for_character(subculture_key, subtype_key)
 
     if is_table(sc_table) then
         for i = 1, #sc_table do
-            local head = sc_table[i]
-            valid_heads[#valid_heads+1] = head
+            valid_heads[#valid_heads+1] = sc_table[i]
+            logf("Adding %q to list of valid heads", sc_table[i])
         end
     end
 
     if is_table(st_table) then
         for i = 1, #st_table do
-            local head = st_table[i]
-            valid_heads[#valid_heads+1] = head
+            valid_heads[#valid_heads+1] = st_table[i]
+            logf("Adding %q to list of valid heads", st_table[i])
         end
     end
 
@@ -669,6 +658,7 @@ function headtaking:add_head(character_obj, queek_obj)
 
     -- no head found for this char
     if head_key == "" then
+        logf("No head found for character with subtype %q in subculture %q", subtype_key, subculture_key)
         return false
     end
 
@@ -2286,8 +2276,8 @@ function headtaking:init_valid_heads()
                     self.subculture_to_heads[sc_key] = {}
                 end
 
-                local internal_table = self.subculture_to_heads[sc_key]
-                internal_table[#internal_table+1] = head_key
+                self.subculture_to_heads[sc_key][#self.subculture_to_heads[sc_key]+1] = head_key
+                logf("Adding %q to subculture %q", head_key, sc_key)
             end
         end
 
@@ -2299,8 +2289,8 @@ function headtaking:init_valid_heads()
                     self.subtype_to_heads[st_key] = {}
                 end
 
-                local internal_table = self.subtype_to_heads[st_key]
-                internal_table[#internal_table+1] = head_key
+                self.subtype_to_heads[st_key][#self.subtype_to_heads[st_key]+1] = head_key
+                logf("Adding %q to subtype %q", head_key, st_key)
             end
         end
     end
@@ -2341,6 +2331,7 @@ function headtaking:initialize_listeners()
             local killed_character = context:character()
             local queek_faction = cm:get_faction(self.faction_key)
             if not queek_faction or queek_faction:is_null_interface() then
+                log("Queek faction isn't found?")
                 return false
             end
 
@@ -2352,13 +2343,17 @@ function headtaking:initialize_listeners()
 
             local killed_faction = killed_character:faction()
 
+            log("Chance is "..tostring(rand)..", probability is "..tostring(chance))
+
             -- grant an extra set of free heads if Queek has destroyed an entire faction
             if killed_faction:is_dead() and self:has_squeak() then
+                log("Giving free heads!")
                 self:add_free_heads_from_subculture(killed_faction:subculture(), 3)
                 return
             end
 
             if rand <= chance then
+                log("Doing an add head.")
                 self:add_head(killed_character, queek)
             end
         end,
